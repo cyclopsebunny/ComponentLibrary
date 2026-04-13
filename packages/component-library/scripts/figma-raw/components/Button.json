@@ -1,0 +1,37 @@
+{
+  "nodeId": "4185-3778",
+  "componentName": "Button",
+  "extractedAt": "2026-02-04T19:45:00.000Z",
+  "variants": {
+    "default": {
+      "states": ["enabled", "hover", "pressed", "active", "disabled"]
+    },
+    "CTA": {
+      "states": ["enabled", "hover", "pressed", "active", "disabled"]
+    },
+    "brand": {
+      "states": ["enabled", "hover", "pressed", "active", "disabled"]
+    },
+    "subtle": {
+      "states": ["enabled", "hover", "pressed", "active", "disabled"]
+    },
+    "danger": {
+      "states": ["enabled", "hover", "pressed", "disabled"]
+    },
+    "danger-subtle": {
+      "states": ["enabled", "hover", "pressed", "disabled"]
+    },
+    "frameless": {
+      "states": ["enabled", "hover", "pressed", "active", "disabled"]
+    }
+  },
+  "sizes": ["Small", "Medium"],
+  "properties": {
+    "label": "string",
+    "hasIconStart": "boolean",
+    "hasIconEnd": "boolean",
+    "iconStart": "ReactNode",
+    "iconEnd": "ReactNode"
+  },
+  "note": "Component uses design tokens from component-colors.json. Colors are extracted from Figma node 3278-6898."
+}

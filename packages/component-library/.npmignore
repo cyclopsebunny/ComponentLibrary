@@ -1,0 +1,24 @@
+# Source files (only dist is published)
+src/
+scripts/
+tsconfig.json
+vite.config.ts
+*.config.*
+.env*
+
+# Development files
+node_modules/
+*.log
+.DS_Store
+
+# Figma raw data (optional - uncomment if you don't want to include)
+# scripts/figma-raw/
+
+# Test files
+*.test.ts
+*.test.tsx
+__tests__/
+coverage/
+
+# Documentation (if separate)
+docs/

@@ -1,0 +1,16 @@
+{
+  "codeConnect": {
+    "parser": "react",
+    "language": "tsx",
+    "label": "React",
+    "include": [
+      "packages/component-library/src/**/*.figma.tsx",
+      "packages/component-library/src/components/Button.tsx"
+    ],
+    "exclude": ["**/node_modules/**", "**/dist/**"],
+    "interactiveSetupFigmaFileUrl": "https://www.figma.com/design/1pYVDCkei9zOaAaz0GHzWq",
+    "importPaths": {
+      "packages/component-library/src/components/*": "@component-library/core"
+    }
+  }
+}

@@ -1,0 +1,11 @@
+node_modules
+dist
+*.log
+.DS_Store
+.env
+.env.local
+*.tsbuildinfo
+
+# Figma raw data (can be regenerated, but useful to track)
+# Uncomment if you want to ignore raw data:
+# packages/component-library/scripts/figma-raw/

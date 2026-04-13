@@ -1,0 +1,109 @@
+/*
+ * Segmented control + segment cell — 4.0 Design System (Enterprise)
+ * - Group: Figma **SegmentedControl** `3430:988` (file `1pYVDCkei9zOaAaz0GHzWq`)
+ * - Cell: Figma **SegmentedButton** `3446:1193` — states Default / Hover / Pressed × Selected
+ */
+
+.sds-segmented {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sds-size-space-150, 6px);
+  font-family: inherit;
+}
+
+.sds-segmented--disabled {
+  opacity: 0.55;
+}
+
+.sds-segmented__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  line-height: 1.25;
+}
+
+.sds-segmented__group {
+  display: flex;
+  border-radius: var(--nexus-shape-borderradius-xs, 8px);
+  overflow: hidden;
+  border: 1px solid var(--sds-color-border-neutral-tertiary, #999999);
+}
+
+.sds-segmented__btn {
+  flex: 1;
+  box-sizing: border-box;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: var(--sds-size-space-150, 6px) var(--sds-size-space-300, 12px);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  white-space: nowrap;
+  cursor: pointer;
+  border: none;
+  border-left: 1px solid var(--sds-color-border-neutral-tertiary, #999999);
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.sds-segmented__btn:first-child {
+  border-left: none;
+}
+
+/* ── Unselected (Default) ─────────────────────────────────────────── */
+.sds-segmented__btn--plain {
+  background: var(--sds-color-background-default-default, #ffffff);
+  color: var(--sds-color-text-default-secondary, #636363);
+  font-weight: 500;
+}
+
+.sds-segmented__btn--plain:hover:not(:disabled) {
+  background: var(--sds-color-background-default-secondary-hover, #ececec);
+}
+
+.sds-segmented__btn--plain:active:not(:disabled) {
+  background: var(--sds-color-background-default-tertiary-hover, #cccccc);
+}
+
+/* ── Selected ───────────────────────────────────────────────────────── */
+.sds-segmented__btn--selected {
+  background: var(--sds-color-background-brand-default, #0a76db);
+  /* Solid brand fill — use white label (Figma selected segment); avoids ambiguous on-brand text token */
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.sds-segmented__btn--selected:hover:not(:disabled) {
+  background: var(--sds-color-background-brand-hover, #05549e);
+}
+
+/*
+ * Selected + Pressed — Figma SegmentedButton (`3446:1193`) / DS **button brand pressed**
+ * (`--button-brand-pressed-*` in `index.css`): light fill + brand text.
+ * `:hover:active` beats `:hover` alone so mousedown shows pressed while the cursor is over the segment.
+ */
+.sds-segmented__btn--selected:hover:active:not(:disabled),
+.sds-segmented__btn--selected:active:not(:disabled) {
+  background: var(--button-brand-pressed-background, #e0eeff);
+  color: var(--button-brand-pressed-text, #0a76db);
+}
+
+.sds-segmented__btn:focus {
+  outline: none;
+}
+
+.sds-segmented__btn:focus-visible {
+  outline: 2px solid var(--sds-color-border-brand-default, #0a76db);
+  outline-offset: 2px;
+  z-index: 1;
+}
+
+.sds-segmented__btn:disabled {
+  cursor: not-allowed;
+}

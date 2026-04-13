@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Button Component Library - Figma Design System</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      padding: 2rem;
+      background: #f9f9f9;
+      color: #191919;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    header {
+      margin-bottom: 3rem;
+    }
+
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+      font-weight: 600;
+    }
+
+    .subtitle {
+      color: #666;
+      font-size: 1.1rem;
+    }
+
+    section {
+      margin-bottom: 4rem;
+      background: white;
+      padding: 2rem;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    h2 {
+      font-size: 1.5rem;
+      margin-bottom: 1.5rem;
+      font-weight: 600;
+    }
+
+    h3 {
+      font-size: 1rem;
+      margin-bottom: 1rem;
+      text-transform: capitalize;
+      font-weight: 500;
+    }
+
+    .button-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .button-item {
+      padding: 1rem;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+    }
+
+    .button-row {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .button-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .size-label {
+      font-size: 0.875rem;
+      margin-bottom: 0.5rem;
+      color: #666;
+    }
+
+    /* Button Base Styles */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-family: 'Inter', sans-serif;
+      font-weight: 400;
+      line-height: 1.4;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border: 1px solid transparent;
+      font-size: 16px;
+      text-decoration: none;
+      user-select: none;
+    }
+
+    .btn-small {
+      padding: 4px 12px;
+      font-size: 14px;
+      gap: 8px;
+    }
+
+    .btn-medium {
+      padding: 8px 16px;
+      font-size: 16px;
+      gap: 16px;
+    }
+
+    /* Default Variant */
+    .btn-default-enabled { background: #ffffff; color: #191919; border-color: #b2b2b2; }
+    .btn-default-enabled:hover:not(.btn-disabled) { background: #f7f7f7; color: #191919; border-color: #b2b2b2; }
+    .btn-default-enabled:active:not(.btn-disabled) { background: #ececec; color: #191919; border-color: #b2b2b2; }
+    .btn-default-hover { background: #f7f7f7; color: #191919; border-color: #b2b2b2; }
+    .btn-default-pressed { background: #ececec; color: #191919; border-color: #b2b2b2; }
+    .btn-default-active { background: #e0eeff; color: #0a76db; border-color: #0a76db; }
+    .btn-default-disabled { background: #f7f7f7; color: #b2b2b2; border-color: #b2b2b2; opacity: 0.6; cursor: not-allowed; }
+
+    /* CTA Variant */
+    .btn-cta-enabled { background: #434343; color: #e0e0e0; border-color: #191919; }
+    .btn-cta-enabled:hover:not(.btn-disabled) { background: #2b2b2b; color: #e0e0e0; border-color: #2b2b2b; }
+    .btn-cta-enabled:active:not(.btn-disabled) { background: #999999; color: #e0e0e0; border-color: #999999; }
+    .btn-cta-hover { background: #2b2b2b; color: #e0e0e0; border-color: #2b2b2b; }
+    .btn-cta-pressed { background: #999999; color: #e0e0e0; border-color: #999999; }
+    .btn-cta-active { background: #636363; color: #e0e0e0; border-color: #636363; }
+    .btn-cta-disabled { background: #f7f7f7; color: #b2b2b2; border-color: #b2b2b2; opacity: 0.6; cursor: not-allowed; }
+
+    /* Brand Variant */
+    .btn-brand-enabled { background: #0a76db; color: #e0eeff; border-color: #0a76db; }
+    .btn-brand-enabled:hover:not(.btn-disabled) { background: #05549e; color: #e0eeff; border-color: #0a76db; }
+    .btn-brand-enabled:active:not(.btn-disabled) { background: #e0eeff; color: #0a76db; border-color: #0a76db; }
+    .btn-brand-hover { background: #05549e; color: #e0eeff; border-color: #0a76db; }
+    .btn-brand-pressed { background: #e0eeff; color: #0a76db; border-color: #0a76db; }
+    .btn-brand-active { background: #0a76db; color: #e0eeff; border-color: #0a76db; }
+    .btn-brand-disabled { background: #f7f7f7; color: #b2b2b2; border-color: #b2b2b2; opacity: 0.6; cursor: not-allowed; }
+
+    /* Subtle Variant */
+    .btn-subtle-enabled { background: transparent; color: #0a76db; border: none; }
+    .btn-subtle-enabled:hover:not(.btn-disabled) { background: #e0eeff; color: #0a76db; border: none; }
+    .btn-subtle-enabled:active:not(.btn-disabled) { background: #cae0fc; color: #0a76db; border-color: #0a76db; }
+    .btn-subtle-hover { background: #e0eeff; color: #0a76db; border: none; }
+    .btn-subtle-pressed { background: #cae0fc; color: #0a76db; border-color: #0a76db; }
+    .btn-subtle-active { background: #e0eeff; color: #0a76db; border-color: #0a76db; }
+    .btn-subtle-disabled { background: transparent; color: #b2b2b2; border: none; opacity: 0.6; cursor: not-allowed; }
+
+    /* Danger Variant */
+    .btn-danger-enabled { background: #bf3617; color: #ffebe5; border-color: #bf3617; }
+    .btn-danger-enabled:hover:not(.btn-disabled) { background: #fc6747; color: #ffebe5; border-color: #bf3617; }
+    .btn-danger-enabled:active:not(.btn-disabled) { background: #bf3617; color: #ffebe5; border-color: #c61735; }
+    .btn-danger-hover { background: #fc6747; color: #ffebe5; border-color: #bf3617; }
+    .btn-danger-pressed { background: #bf3617; color: #ffebe5; border-color: #c61735; }
+    .btn-danger-disabled { background: #f7f7f7; color: #b2b2b2; border-color: #b2b2b2; opacity: 0.6; cursor: not-allowed; }
+
+    /* Danger Subtle Variant */
+    .btn-danger-subtle-enabled { background: #f7f7f7; color: #bf3617; border: none; }
+    .btn-danger-subtle-enabled:hover:not(.btn-disabled) { background: #ffebe5; color: #bf3617; border: none; }
+    .btn-danger-subtle-enabled:active:not(.btn-disabled) { background: #fab7a5; color: #bf3617; border: none; }
+    .btn-danger-subtle-hover { background: #ffebe5; color: #bf3617; border: none; }
+    .btn-danger-subtle-pressed { background: #fab7a5; color: #bf3617; border: none; }
+    .btn-danger-subtle-disabled { background: #f7f7f7; color: #b2b2b2; border: none; opacity: 0.6; cursor: not-allowed; }
+
+    /* Frameless Variant */
+    .btn-frameless-enabled { background: transparent; color: #191919; border: none; }
+    .btn-frameless-enabled:hover:not(.btn-disabled) { background: #f7f7f7; color: #191919; border: none; }
+    .btn-frameless-enabled:active:not(.btn-disabled) { background: #ececec; color: #191919; border: none; }
+    .btn-frameless-hover { background: #f7f7f7; color: #191919; border: none; }
+    .btn-frameless-pressed { background: #ececec; color: #191919; border: none; }
+    .btn-frameless-active { background: #e0eeff; color: #0a76db; border: none; }
+    .btn-frameless-disabled { background: transparent; color: #b2b2b2; border: none; opacity: 0.6; cursor: not-allowed; }
+
+    /* No transform or shadow - buttons only change colors on hover/press per Figma design */
+
+    .playground {
+      background: #f9f9f9;
+      padding: 2rem;
+      border-radius: 8px;
+    }
+
+    .state-selector {
+      margin-bottom: 1.5rem;
+    }
+
+    .state-buttons {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin-top: 0.5rem;
+    }
+
+    .state-btn {
+      padding: 8px 16px;
+      border: 1px solid #b2b2b2;
+      background: #ffffff;
+      color: #191919;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.875rem;
+      font-family: 'Inter', sans-serif;
+      font-weight: 400;
+      transition: all 0.2s ease;
+    }
+
+    .state-btn:hover {
+      background: #f7f7f7;
+      border-color: #b2b2b2;
+    }
+
+    .state-btn:active {
+      background: #ececec;
+    }
+
+    .state-btn.active {
+      background: #e0eeff;
+      color: #0a76db;
+      border-color: #0a76db;
+      font-weight: 500;
+    }
+
+    .code-example {
+      padding: 1rem;
+      background: #f5f5f5;
+      border-radius: 8px;
+      font-family: 'Monaco', 'Courier New', monospace;
+      font-size: 0.875rem;
+      margin-top: 0.5rem;
+      white-space: pre-wrap;
+      overflow-x: auto;
+    }
+
+    .icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      font-size: 12px;
+    }
+
+    .icon-medium {
+      width: 24px;
+      height: 24px;
+      font-size: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Button Component Library</h1>
+      <p class="subtitle">All button variants, states, and sizes extracted from Figma</p>
+    </header>
+
+    <!-- Interactive Playground -->
+    <section class="playground">
+      <h2>Interactive Playground</h2>
+      <div class="state-selector">
+        <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">State:</label>
+        <div class="state-buttons" id="stateButtons">
+          <button class="state-btn active" data-state="enabled">enabled</button>
+          <button class="state-btn" data-state="hover">hover</button>
+          <button class="state-btn" data-state="pressed">pressed</button>
+          <button class="state-btn" data-state="active">active</button>
+          <button class="state-btn" data-state="disabled">disabled</button>
+        </div>
+      </div>
+      <div class="button-row" id="playgroundButtons">
+        <div style="text-align: center;">
+          <div style="font-size: 0.875rem; margin-bottom: 0.5rem; color: #666;">default</div>
+          <button class="btn btn-medium btn-default-enabled" data-variant="default">Button</button>
+        </div>
+        <div style="text-align: center;">
+          <div style="font-size: 0.875rem; margin-bottom: 0.5rem; color: #666;">CTA</div>
+          <button class="btn btn-medium btn-cta-enabled" data-variant="cta">Button</button>
+        </div>
+        <div style="text-align: center;">
+          <div style="font-size: 0.875rem; margin-bottom: 0.5rem; color: #666;">brand</div>
+          <button class="btn btn-medium btn-brand-enabled" data-variant="brand">Button</button>
+        </div>
+        <div style="text-align: center;">
+          <div style="font-size: 0.875rem; margin-bottom: 0.5rem; color: #666;">subtle</div>
+          <button class="btn btn-medium btn-subtle-enabled" data-variant="subtle">Button</button>
+        </div>
+        <div style="text-align: center;">
+          <div style="font-size: 0.875rem; margin-bottom: 0.5rem; color: #666;">danger</div>
+          <button class="btn btn-medium btn-danger-enabled" data-variant="danger">Button</button>
+        </div>
+        <div style="text-align: center;">
+          <div style="font-size: 0.875rem; margin-bottom: 0.5rem; color: #666;">danger-subtle</div>
+          <button class="btn btn-medium btn-danger-subtle-enabled" data-variant="danger-subtle">Button</button>
+        </div>
+        <div style="text-align: center;">
+          <div style="font-size: 0.875rem; margin-bottom: 0.5rem; color: #666;">frameless</div>
+          <button class="btn btn-medium btn-frameless-enabled" data-variant="frameless">Button</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- All Variants -->
+    <section>
+      <h2>All Variants (Enabled State)</h2>
+      <div class="button-grid">
+        <div class="button-item">
+          <h3>default</h3>
+          <div class="button-group">
+            <button class="btn btn-medium btn-default-enabled">Button</button>
+            <button class="btn btn-small btn-default-enabled">Button</button>
+          </div>
+        </div>
+        <div class="button-item">
+          <h3>CTA</h3>
+          <div class="button-group">
+            <button class="btn btn-medium btn-cta-enabled">Button</button>
+            <button class="btn btn-small btn-cta-enabled">Button</button>
+          </div>
+        </div>
+        <div class="button-item">
+          <h3>brand</h3>
+          <div class="button-group">
+            <button class="btn btn-medium btn-brand-enabled">Button</button>
+            <button class="btn btn-small btn-brand-enabled">Button</button>
+          </div>
+        </div>
+        <div class="button-item">
+          <h3>subtle</h3>
+          <div class="button-group">
+            <button class="btn btn-medium btn-subtle-enabled">Button</button>
+            <button class="btn btn-small btn-subtle-enabled">Button</button>
+          </div>
+        </div>
+        <div class="button-item">
+          <h3>danger</h3>
+          <div class="button-group">
+            <button class="btn btn-medium btn-danger-enabled">Button</button>
+            <button class="btn btn-small btn-danger-enabled">Button</button>
+          </div>
+        </div>
+        <div class="button-item">
+          <h3>danger-subtle</h3>
+          <div class="button-group">
+            <button class="btn btn-medium btn-danger-subtle-enabled">Button</button>
+            <button class="btn btn-small btn-danger-subtle-enabled">Button</button>
+          </div>
+        </div>
+        <div class="button-item">
+          <h3>frameless</h3>
+          <div class="button-group">
+            <button class="btn btn-medium btn-frameless-enabled">Button</button>
+            <button class="btn btn-small btn-frameless-enabled">Button</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- All States -->
+    <section>
+      <h2>All States (Brand Variant)</h2>
+      <div class="button-grid">
+        <div class="button-item">
+          <h3>enabled</h3>
+          <button class="btn btn-medium btn-brand-enabled">Button</button>
+        </div>
+        <div class="button-item">
+          <h3>hover</h3>
+          <button class="btn btn-medium btn-brand-hover">Button</button>
+        </div>
+        <div class="button-item">
+          <h3>pressed</h3>
+          <button class="btn btn-medium btn-brand-pressed">Button</button>
+        </div>
+        <div class="button-item">
+          <h3>active</h3>
+          <button class="btn btn-medium btn-brand-active">Button</button>
+        </div>
+        <div class="button-item">
+          <h3>disabled</h3>
+          <button class="btn btn-medium btn-brand-disabled btn-disabled">Button</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Size Comparison -->
+    <section>
+      <h2>Size Comparison</h2>
+      <div style="display: flex; flex-direction: column; gap: 2rem;">
+        <div class="button-item">
+          <h3>default</h3>
+          <div class="button-row">
+            <div>
+              <div class="size-label">Small</div>
+              <button class="btn btn-small btn-default-enabled">Button</button>
+            </div>
+            <div>
+              <div class="size-label">Medium</div>
+              <button class="btn btn-medium btn-default-enabled">Button</button>
+            </div>
+          </div>
+        </div>
+        <div class="button-item">
+          <h3>CTA</h3>
+          <div class="button-row">
+            <div>
+              <div class="size-label">Small</div>
+              <button class="btn btn-small btn-cta-enabled">Button</button>
+            </div>
+            <div>
+              <div class="size-label">Medium</div>
+              <button class="btn btn-medium btn-cta-enabled">Button</button>
+            </div>
+          </div>
+        </div>
+        <div class="button-item">
+          <h3>brand</h3>
+          <div class="button-row">
+            <div>
+              <div class="size-label">Small</div>
+              <button class="btn btn-small btn-brand-enabled">Button</button>
+            </div>
+            <div>
+              <div class="size-label">Medium</div>
+              <button class="btn btn-medium btn-brand-enabled">Button</button>
+            </div>
+          </div>
+        </div>
+        <div class="button-item">
+          <h3>subtle</h3>
+          <div class="button-row">
+            <div>
+              <div class="size-label">Small</div>
+              <button class="btn btn-small btn-subtle-enabled">Button</button>
+            </div>
+            <div>
+              <div class="size-label">Medium</div>
+              <button class="btn btn-medium btn-subtle-enabled">Button</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- With Icons -->
+    <section>
+      <h2>With Icons</h2>
+      <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+        <div class="button-item">
+          <h3>Start Icon</h3>
+          <div class="button-row">
+            <button class="btn btn-medium btn-brand-enabled">
+              <span class="icon icon-medium">★</span>
+              Button
+            </button>
+            <button class="btn btn-medium btn-cta-enabled">
+              <span class="icon icon-medium">★</span>
+              Button
+            </button>
+            <button class="btn btn-medium btn-subtle-enabled">
+              <span class="icon icon-medium">★</span>
+              Button
+            </button>
+          </div>
+        </div>
+        <div class="button-item">
+          <h3>End Icon</h3>
+          <div class="button-row">
+            <button class="btn btn-medium btn-brand-enabled">
+              Button
+              <span class="icon icon-medium">×</span>
+            </button>
+            <button class="btn btn-medium btn-cta-enabled">
+              Button
+              <span class="icon icon-medium">×</span>
+            </button>
+            <button class="btn btn-medium btn-subtle-enabled">
+              Button
+              <span class="icon icon-medium">×</span>
+            </button>
+          </div>
+        </div>
+        <div class="button-item">
+          <h3>Both Icons</h3>
+          <div class="button-row">
+            <button class="btn btn-medium btn-brand-enabled">
+              <span class="icon icon-medium">★</span>
+              Button
+              <span class="icon icon-medium">×</span>
+            </button>
+            <button class="btn btn-medium btn-cta-enabled">
+              <span class="icon icon-medium">★</span>
+              Button
+              <span class="icon icon-medium">×</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Code Examples -->
+    <section>
+      <h2>Usage Examples</h2>
+      <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+        <div>
+          <div style="margin-bottom: 0.5rem; font-weight: 600;">Basic Usage:</div>
+          <div class="code-example">&lt;Button label="Click me" variant="brand" /&gt;</div>
+        </div>
+        <div>
+          <div style="margin-bottom: 0.5rem; font-weight: 600;">With Icons:</div>
+          <div class="code-example">&lt;Button 
+  label="Save" 
+  variant="CTA" 
+  size="Medium"
+  hasIconStart 
+  iconStart={&lt;SaveIcon /&gt;}
+/&gt;</div>
+        </div>
+        <div>
+          <div style="margin-bottom: 0.5rem; font-weight: 600;">Different States:</div>
+          <div class="code-example">&lt;Button label="Submit" variant="brand" state="hover" /&gt;
+&lt;Button label="Disabled" variant="default" state="disabled" /&gt;</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer style="margin-top: 4rem; padding: 2rem; text-align: center; color: #666; border-top: 1px solid #e0e0e0;">
+      <p>All colors and styles extracted from Figma design system</p>
+      <p style="margin-top: 0.5rem; font-size: 0.875rem;">Source: Figma node 4185-3778 | Component Colors: Figma node 3278-6898</p>
+    </footer>
+  </div>
+
+  <script>
+    // Interactive state selector
+    const stateButtons = document.querySelectorAll('.state-btn');
+    const playgroundButtons = document.querySelectorAll('#playgroundButtons .btn');
+
+    stateButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const state = btn.dataset.state;
+        
+        // Update active state button
+        stateButtons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        
+        // Update all playground buttons
+        playgroundButtons.forEach(button => {
+          const variant = button.dataset.variant;
+          button.className = `btn btn-medium btn-${variant}-${state}`;
+          
+          if (state === 'disabled') {
+            button.classList.add('btn-disabled');
+          } else {
+            button.classList.remove('btn-disabled');
+          }
+        });
+      });
+    });
+  </script>
+</body>
+</html>

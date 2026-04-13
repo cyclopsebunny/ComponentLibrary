@@ -1,0 +1,19 @@
+{
+  "figma": {
+    "fileKey": "1pYVDCkei9zOaAaz0GHzWq",
+    "nodeMappings": {
+      "variables": "3278-5847",
+      "semanticColors": "3278-7910",
+      "componentColors": "3278-6898",
+      "components": [
+        { "nodeId": "4185-3778", "name": "Button" },
+        { "nodeId": "185-852", "name": "Button Danger" },
+        { "nodeId": "3430-988", "name": "SegmentedControl" }
+      ]
+    },
+    "extraction": {
+      "variablesPath": "packages/component-library/scripts/figma-raw/variables.json",
+      "componentsPath": "packages/component-library/scripts/figma-raw/components"
+    }
+  }
+}
