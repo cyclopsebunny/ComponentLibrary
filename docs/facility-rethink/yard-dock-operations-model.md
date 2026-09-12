@@ -15,7 +15,7 @@ Every change here came from implementing this document as an executable rule eng
 - **`SELF_REGISTER`'s effects now cover a TAKE-only visit** (§5.1) — patterns 4 and 8 have no BRING leg to bind and no trailer to set a destination on.
 - **`VERIFY_EMPTY` keyed on nothing being aboard** rather than load state `EMPTY` (§5.1), which an outbound live load stops satisfying the moment its leg is bound.
 - **`ADVANCE_READINESS` added** (§5.5). §3.7 defined three readiness states and named no action that moved between them, so flow 7's prep steps had no catalog entry.
-- **Two open items added:** §10.10, whether appointment-driven binding needs the empty check `ASSIGN_SHIPMENT` has — the one decision in this batch that is operational rather than editorial; and §10.11 on `AT_FACILITY`.
+- **Three open items added:** §10.10, whether appointment-driven binding needs the empty check `ASSIGN_SHIPMENT` has; §10.11 on `AT_FACILITY`; and **§10.12, the largest of the three — custody, `TrailerStay`, and the several histories.** §10.12 supersedes the `tractor` change above as an end state: a stored boolean answers "is this trailer my work" and discards "whose work was it", which is what the history is actually asked. Under it `TRACTOR_ATTACHED` becomes genuinely derived and §6.1's original classification of it turns out to have been right.
 
 **Still open from the same round, and deliberately not changed here:** `presence` is an Appointment dimension, but `COMPLETE_MOVE` (§5.2) and stress test 1-xiv both change it when a move crosses the fence — including for a company return that has no appointment at all (§4 pattern 9). Either presence is partly a trailer dimension or fence-crossing needs its own trailer-level fact, and that is a modelling decision rather than a correction.
 
@@ -276,7 +276,7 @@ Rows are **removed** only by completing an unload. They are never deleted to "fr
 | Field | Notes |
 |---|---|
 | `appointment_id` | |
-| `carrier`, `driver`, `tractor` | |
+| `carrier`, `driver`, `tractor` | Who visited. **Sufficient for the visit, not for custody of a particular trailer** — patterns 5 and 6 are one appointment and one power unit holding two trailers over different spans. See §10.12 |
 | `window_start`, `window_end` | Scheduled |
 | `visit_type` | `LIVE` (driver stays with the trailer through the dock activity) \| `DROP` (driver does not wait) |
 | `party_type` | `THIRD_PARTY` \| `COMPANY_DRIVER` — decides gate ceremony, not freight rules (§5.1) |
@@ -1133,7 +1133,7 @@ The planner-driven path is the original requirement to send an empty trailer to 
 | Flag | Definition |
 |---|---|
 | `NEEDS_MOVE` | Current position ≠ position required by the trailer's next committed step, and no open MoveTask exists |
-| `TRACTOR_ATTACHED` | A driver is hooked to this trailer. **A rendering of the stored `tractor` dimension, not a computed flag** — there is nothing else in the model to compute it from, so it is stored on the trailer and written by `BIND_TRAILER_TO_LEG` (BRING legs), `HOOK_TRAILER`, `DROP_TRAILER` and `CHECK_OUT`. **Suppresses move-task creation** — it needs a destination, not a task (§3.5) |
+| `TRACTOR_ATTACHED` | A driver is hooked to this trailer. **Currently a rendering of the stored `tractor` dimension, not a computed flag** — there is nothing else in the model to compute it from, so it is stored on the trailer and written by `BIND_TRAILER_TO_LEG` (BRING legs), `HOOK_TRAILER`, `DROP_TRAILER` and `CHECK_OUT`. **It becomes properly derived under §10.12** — an open custody span held by a road tractor — and this table's classification of it turns out to be right once there is something to derive it from. **Suppresses move-task creation** — it needs a destination, not a task (§3.5) |
 | `AWAITING_DOCK` | `destination = AWAITING_ASSIGNMENT`. Applies equally to an arriving live load and a trailer dropped in the yard hours ago (§3.6.3) |
 | `AT_DESTINATION` | Position matches destination. **Derived** — replaces the stored `SPOTTED` value (§9 #38) |
 | `SPOTTED` | At a dock **and** sensor-confirmed. The narrow, correct sense of the word (§2.9) |
@@ -1329,6 +1329,8 @@ The same vocabulary and ordering applies at every density. Only the truncation p
 ## 8. History display
 
 "What has happened with that trailer" renders as a single chronological stream of Events (§2.10), filtered to that trailer and to the shipments, rows, sessions, moves, and appointments that referenced it.
+
+**The stream is right; the absence of brackets is not.** §10.12 argues that there are four distinct bracketings of this one log — trailer stay, appointment, dock stay, custody — none of which nests inside another, and that a history screen has to pick one and say which it is showing. The example below silently crosses one DockStay and two DockSessions with nothing marking either boundary; add a departure and a return and it would read as one continuous life. Treat this section as the stream specification and §10.12 as the unresolved question of how it is divided.
 
 Each entry: timestamp · actor · action · the change in plain language.
 
@@ -1534,6 +1536,80 @@ Recommend **(c)**. It keeps the guard's value without paying for it in the lane,
 ### 10.11 Is `AT_FACILITY` really one state?
 
 Raised by §3.6.2's own admission that it covers "two physically different situations" — a driver in the gate lane and a trailer parked in an outside lot for days. The engine needed the trailer's position to tell them apart at every decision point, which works but means the presence value alone is never sufficient. If the lot case turns out to need its own handling in the queues, this splits. Not urgent; noted so it is not rediscovered.
+
+### 10.12 Custody, `TrailerStay`, and why there is more than one history
+
+**The largest open item in this document, and the one that subsumes several smaller ones.** It is written up here rather than applied because it adds two entities and moves three fields, and §12 is right that entity shape is what you pay for later.
+
+#### The observation
+
+`tractor` was promoted to a stored trailer dimension in v0.21 to stop live loads generating move tasks. That works and it is the wrong end state: a boolean answers *"is this trailer my work?"* and discards *"whose work was it?"* — which is the question the history is asked. The same trailer is brought by one driver, repositioned twice by a spotter, and taken away by a second driver, possibly days later on a different appointment.
+
+#### Custody is the missing concept
+
+| Entity | Holds | Bounded by |
+|---|---|---|
+| **TrailerCustody** | One continuous period in which one power unit had one trailer | Hook to drop |
+
+| Field | Notes |
+|---|---|
+| `custody_id`, `trailer_id` | |
+| `holder_type` | `ROAD_TRACTOR` \| `YARD_TRUCK` — **load-bearing, see below** |
+| `driver`, `tractor` | Who and what. `tractor` optional where on-site power units are not tracked |
+| `source` | The `visit_leg_id` or `move_task_id` that caused it |
+| `started_at`, `ended_at` | `ended_at` null while held |
+
+**`TRACTOR_ATTACHED` then becomes genuinely derived** — an open custody span with `holder_type = ROAD_TRACTOR` — and §6.1's classification of it is correct after all. v0.21 stored it only because there was nothing to compute it from.
+
+**The two holder types mean opposite things to §3.5, and conflating them reintroduces the v0.21 bug in a new place.** A road tractor holding the trailer *suppresses* move-task creation. A yard truck holding it *is* a move task in progress. Any rule that tests "is custody open" rather than "is custody open to a road tractor" will get this backwards.
+
+#### Driver and tractor belong on the leg, not the appointment
+
+§2.4 puts `carrier`, `driver`, `tractor` on the Appointment and opens by insisting an appointment is a visit by a tractor and driver. Both are true and neither is sufficient: **patterns 5 and 6 are one appointment, one power unit, and two trailers whose custody spans start and end at different moments.** The driver identity is an appointment fact; the custody of a particular trailer is a leg fact.
+
+| Stays on Appointment | Moves to VisitLeg (via custody) |
+|---|---|
+| `carrier`, `driver`, `tractor` — who visited | Which trailer that power unit held, and from when to when |
+
+#### `TrailerStay` — the same argument §3.6.3 already won
+
+§3.6.3 moved `destination` to the trailer because a dropped trailer keeps needing a dock after its appointment closed. **Time on site has exactly the same problem and has not been fixed.** `on_site_since` lives on the Appointment (§2.4) and is the detention clock by default (§9 #3) — but in flow 3 the trailer's stay outlives the visit by hours, and in pattern 7 it spans two appointments entirely.
+
+| Entity | Definition | Contains |
+|---|---|---|
+| **TrailerStay** | **One continuous occupancy of the facility by one trailer**, gate-in to gate-out | 0..n DockStays · 0..n MoveTasks · 0..n TrailerCustody spans · referenced by 1..n VisitLegs |
+
+Deliberately parallel to DockStay (§2.6), which is "one continuous occupancy of a dock by one trailer". **Not** called a session: glossary §2 would ban that immediately against DockSession.
+
+**A useful consequence:** this separates two numbers currently conflated in one field. Detention is time a *driver* waits and belongs to the appointment. Dwell is time a *trailer* occupies your yard and belongs to the stay. A drop has dwell and no detention. Today there is one `on_site_since` doing both jobs, which is why §10.6 keeps circling.
+
+#### Why this means several histories, not one
+
+§8 renders history as "a single chronological stream of Events filtered to that trailer". The stream is right — §2.10 is correct that the event log is the backbone — but it has no brackets, and the brackets carry the meaning:
+
+| History | Bracketed by | Starts / ends |
+|---|---|---|
+| **Trailer** | TrailerStay | Gate-in to gate-out. Several stays over a trailer's life |
+| **Appointment** | Appointment, subdivided by leg | Scheduled window to `DEPARTED` |
+| **Dock** | DockStay, subdivided by DockSession | Spot-in to pull-out |
+| **Custody** | TrailerCustody | Hook to drop. The one that answers "who had it at 14:32" |
+
+**None of these nests inside another**, which is the whole reason one view cannot serve them:
+
+- An appointment spans **two** TrailerStays — drop-and-hook opens T1's stay and closes T2's.
+- A TrailerStay spans **two** appointments — flow 3 arrives on one and leaves on another.
+
+So the relationship is many-to-many through the leg, and a history screen has to pick a bracketing and say which one it is showing. The §8 example silently crosses one DockStay and two DockSessions with nothing marking the boundaries; add a departure and a return and it would read as one continuous life.
+
+#### Recommendation
+
+Take it, in this order, and only the first part is urgent:
+
+1. **`TrailerCustody` with `holder_type`**, replacing the stored `tractor` dimension. Small, and it is the difference between a yard log that can answer "who moved this" and one that cannot.
+2. **`TrailerStay`**, and move `on_site_since` on to it while keeping the appointment's own clock for detention.
+3. **Bracketed history** in §8 — one event stream, four selectable bracketings.
+
+The cost is honest: two entities, three moved fields, and §8 rewritten. The cost of not doing it is that every custody question becomes archaeology against the event log, and the one clock is asked to answer two different commercial questions.
 
 ---
 

@@ -49,6 +49,8 @@ The highest-value section. Each of these will be said in meetings; none should a
 | **"Dock"** *(bare, for the area)* | Now means one numbered position | "dock area" for the building side; "dock crew"/"dock lead" are fine as roles |
 | **"Dock queue"** *(bare)* | Two queues contain the word | **Dock Assignment Queue** (which dock) vs **Dock Work Queue** (load/unload) |
 | **"Cleaned"** | Only one instance of readiness; others are pre-cool, washout, inspection | `readiness_requirements` / `READY` |
+| **"Trailer session"** | "Session" already means one work activity at a dock. A trailer's continuous time on site is a different span entirely, and it can contain several dock sessions across several appointments | `TrailerStay` — proposed in model §10.12, parallel to `DockStay` |
+| **"History"** *(bare)* | Four different spans bracket the same event log, and none nests inside another (model §10.12) | Name the bracketing: trailer-stay history, appointment history, dock-stay history, custody history |
 
 ---
 
