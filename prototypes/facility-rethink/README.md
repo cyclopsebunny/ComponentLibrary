@@ -40,7 +40,7 @@ dock sensors disagreeing with the records, the daily yard check.
 
 ## Findings
 
-Eleven findings are built in, each one a place where the four documents could not all be
+Twelve findings are built in, each one a place where the four documents could not all be
 implemented at once, with the sections that disagree named. The one that matters most:
 
 **F10 — no action positions a trailer that has a driver.** Deleting `DRIVER_SELF` was right,
