@@ -1,7 +1,13 @@
 # Operational Flows — States, Flags, and Actions by Step
 
-**Companion to:** `yard-dock-operations-model.md` v0.17, `action-availability-matrix.md` v0.7, `glossary.md` v0.1
-**Status:** Draft v0.4 — dock sensors; `SPOTTED` narrowed; `AUTHORIZE_DEPARTURE` rename
+**Companion to:** `yard-dock-operations-model.md` v0.21, `action-availability-matrix.md` v0.11, `glossary.md` v0.5
+**Status:** Draft v0.5 — every step now names an action that exists
+
+### Changes from v0.4
+- **`POSITION_TRAILER` named at P3** in flows 1, 2, 3 and 5. Those steps previously named no action at all, or only the action that is *hidden* there — nothing in the catalog moved a driver-attached trailer.
+- **P1a sets `tractor → ATTACHED`.** A trailer driven in is hooked from arrival until `DROP_TRAILER`; no step said so, and an implementation that misses it hands every live load to the yard team.
+- **Flow 6 P1 names `ADMIT`** rather than "RF access", which was a description and not an action.
+- **The spine's P5 ends at presence `DEPARTED`,** not `CHECKED_OUT` — the latter is not a value of any dimension (glossary §5.4).
 **Purpose:** Walk each appointment type from start to finish, showing at every step which states change, which flags can appear, which actions are available, and who acts.
 
 ---
@@ -45,7 +51,7 @@ Every flow is a subset of these, in this order.
 | **P2 · Destination** | Where is this trailer going? | `DOCK_ASSIGNED` or `YARD_ASSIGNED` |
 | **P3 · Position** | Get it there | `AT_DESTINATION`; `SPOTTED` once a dock sensor confirms it |
 | **P4 · Dock work** | Load or unload | Sessions ended, fill declared, sealed |
-| **P5 · Depart** | Authorize and record leaving | `CHECKED_OUT` |
+| **P5 · Depart** | Authorize and record leaving | presence `DEPARTED` |
 | **P6 · After** | Reconcile what actually happened | Exit read matched, or recovery resolved |
 
 **The phase that decides everything downstream is P3.** If a tractor is attached, the driver positions the trailer and there is no move task. If not, positioning is yard-team work and generates one. Every flow difference below traces back to this.
@@ -59,10 +65,10 @@ Trailer arrives loaded, unloads at a dock with the driver waiting, departs empty
 | Step | Changes | Flags | Actions | Actor |
 |---|---|---|---|---|
 | **P0** Appointment booked; inbound shipments expected on the BRING leg. Trailer number unknown | Shipment `EXPECTED` | — | — | Planner |
-| **P1a** Driver scans QR at the facility, gives appointment ID + trailer number | registration → `SELF_REGISTERED`; presence → `AT_FACILITY`; trailer record created if new; **TrailerLoad rows created from the leg's shipments** — `ON_BOARD` here, `ASSIGNED` on a TAKE leg (§9 #37); dockpass issued | `FIRST_VISIT`, `ID_SINGLE_SOURCE` | `SELF_REGISTER` | Driver |
+| **P1a** Driver scans QR at the facility, gives appointment ID + trailer number | registration → `SELF_REGISTERED`; presence → `AT_FACILITY`; trailer record created if new; **tractor → `ATTACHED`** (it was driven here, and stays hooked until `DROP_TRAILER`); **TrailerLoad rows created from the leg's shipments** — `ON_BOARD` here, `ASSIGNED` on a TAKE leg (§9 #37); dockpass issued | `FIRST_VISIT`, `ID_SINGLE_SOURCE`, `TRACTOR_ATTACHED` | `SELF_REGISTER` | Driver |
 | **P1b** Dockpass redeemed at kiosk | presence → `ON_SITE`; inbound shipments → `ARRIVED` | `ID_DISPUTED` | `ADMIT`, `TURN_AWAY` | Gate / kiosk |
 | **P2** Dock assigned | destination → `DOCK_ASSIGNED`; DockAssignment `HELD` | `AWAITING_DOCK`, `DETENTION_RISK` | `ASSIGN_DOCK`, `RELEASE_DOCK` | Dispatcher |
-| **P3** Driver drives to the dock. **No move task** | position → `DOCK`; DockStay opens; `DockAssignment → FULFILLED` | `AT_DESTINATION`, `SPOTTED` (sensor), `TRACTOR_ATTACHED` | `CREATE_MOVE_TASK` is **hidden** — a driver is attached | Driver |
+| **P3** Driver drives to the dock. **No move task** | position → `DOCK`; DockStay opens; `DockAssignment → FULFILLED` | `AT_DESTINATION`, `SPOTTED` (sensor), `TRACTOR_ATTACHED` | `POSITION_TRAILER`. `CREATE_MOVE_TASK` is **hidden** — a driver is attached | Driver |
 | **P4a** Unload session opened — **pre-populated with every `ON_BOARD` shipment** (§9 #37). The user removes any staying aboard, rather than adding what to unload | Session `OPEN` | `AWAITING_ASSIGNMENT` if left idle | `OPEN_SESSION`, `REMOVE_SHIPMENT_FROM_SESSION` *(exception)* | Dock lead |
 | **P4b** Unloading | Session `ACTIVE`; rows → `UNLOADING`; load state `IN_WORK` | `DETENTION_RISK` | `END_SESSION`, `CANCEL_SESSION` (`D`, supervisor) | Dock crew |
 | **P4c** Session ended, **outcome per shipment** | Rows closed; shipments → `RECEIVED`; load state `EMPTY`; `empty_verification → VERIFIED_EMPTY` | `PARTIAL_RECEIPT` if LTL freight stays aboard; `UNEXPECTED_RESIDUAL` | `END_SESSION` | Dock lead |
@@ -83,7 +89,7 @@ Identical to Flow 1 through P2. Differences:
 | Step | Changes | Flags | Actions | Actor |
 |---|---|---|---|---|
 | **P1a** Driver claims the trailer is empty | `empty_verification → CLAIMED_EMPTY` | `UNVERIFIED_ASSIGNMENT` once assigned | `SELF_REGISTER`, `VERIFY_EMPTY` | Driver / guard |
-| **P3** Driver drives to the dock. **No move task** | position → `DOCK`; DockStay opens | `AWAITING_ASSIGNMENT` — **an occupied dock doing nothing** | `ASSIGN_SHIPMENT` | Driver |
+| **P3** Driver drives to the dock. **No move task** | position → `DOCK`; DockStay opens | `AWAITING_ASSIGNMENT` — **an occupied dock doing nothing** | `POSITION_TRAILER`, `ASSIGN_SHIPMENT` | Driver |
 | **P4a** *Usually nothing to do.* Rows were created `ASSIGNED` at the gate from the TAKE leg (§9 #37). `ASSIGN_SHIPMENT` is only needed for an unplanned load | Load state `ASSIGNED_ONLY` | `ACCEPTING_FREIGHT` | `ASSIGN_SHIPMENT` *(exception)* | Planner |
 | **P4b** One session, **pre-populated with every `ASSIGNED` row** | Session `ACTIVE`; rows → `LOADING` | — | `OPEN_SESSION`, `START_SESSION`; `ADD_SHIPMENT_TO_SESSION` *(exception, permitted while `ACTIVE`)* | Dock crew |
 | **P4c** Session ended with **an outcome each** | Per shipment: `ON_BOARD` / back to `ASSIGNED` / `PART_LOADED` | `PART_LOAD_HELD` | `END_SESSION` | Dock lead |
@@ -102,7 +108,7 @@ Trailer arrives loaded, is dropped, driver leaves. Unloading happens later, on y
 |---|---|---|---|---|
 | **P1** As Flow 1 | presence → `ON_SITE`; rows `ON_BOARD` | — | `SELF_REGISTER`, `ADMIT` | Driver / gate |
 | **P2** Destination set — a dock if one is free, otherwise the yard | destination → `DOCK_ASSIGNED` or `YARD_ASSIGNED` | `AWAITING_DOCK` | `ASSIGN_DOCK`, `ASSIGN_YARD` | Dispatcher |
-| **P3a** Driver drives to the drop point. **Still no move task** | position → yard spot / lot / dock | `TRACTOR_ATTACHED` | — | Driver |
+| **P3a** Driver drives to the drop point. **Still no move task** | position → yard spot / lot / dock | `TRACTOR_ATTACHED` | `POSITION_TRAILER` | Driver |
 | **P3b** **Tractor detaches — the handoff** | Trailer becomes yard-team responsibility; if no dock, destination → `AWAITING_ASSIGNMENT` | `DROPPED_NO_DESTINATION` | `DROP_TRAILER` | Driver |
 | **P5** Driver departs bobtail, typically before any unloading | presence → `DEPARTED`; exit read `NO_TRAILER` | `PICKUP_NOT_TAKEN` does **not** apply — nothing was expected | `AUTHORIZE_DEPARTURE`, `CHECK_OUT` | Gate |
 | **— gap of hours, appointment closed —** | | `DROPPED_NO_DESTINATION` **ages invisibly** | | |
@@ -158,7 +164,7 @@ Employee takes a company trailer out on a route. *(§4 pattern 8 — optional)*
 | Step | Changes | Flags | Actions | Actor |
 |---|---|---|---|---|
 | **P0** Trailer cleaned, inspected, in the pool, then loaded and staged | readiness `READY` → assigned → `STAGED` | `AVAILABLE_FOR_ASSIGNMENT` then `PRELOAD_STAGED` | `ASSIGN_SHIPMENT`, session actions | Planner / dock |
-| **P1** Employee arrives, `party_type = COMPANY_DRIVER`, `access_method = RF_BADGE`. **No dockpass** | presence → `ON_SITE` | — | RF access | Driver |
+| **P1** Employee arrives, `party_type = COMPANY_DRIVER`, `access_method = RF_BADGE`. **No dockpass** | presence → `ON_SITE` | — | `ADMIT`, on the badge as credential (§5.1) | Driver |
 | **P3** Hooks the trailer from the yard or a dock | Pending move cancelled | `TRACTOR_ATTACHED` | `HOOK_TRAILER` | Driver |
 | **P5** Departs on RF badge. **Relaxed ceremony** | Shipments → `DEPARTED` | — | `AUTHORIZE_DEPARTURE` (reduced checks), `CHECK_OUT` | Driver |
 | **P6** Exit read still fires | Departure recorded | `UNDECLARED_TRAILER_EXIT` | `CORRECT_DEPARTURE` | System |

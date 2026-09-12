@@ -63,12 +63,24 @@ Five things that, if lost, make the rest incoherent:
 
 | Document | Version | Size |
 |---|---|---|
-| yard-dock-operations-model.md | v0.20 | ~149 KB |
-| flows.md | v0.4 | ~19 KB |
-| action-availability-matrix.md | v0.10 | ~26 KB |
-| glossary.md | v0.4 | ~18 KB |
+| yard-dock-operations-model.md | v0.21 | ~152 KB |
+| flows.md | v0.5 | ~19 KB |
+| action-availability-matrix.md | v0.11 | ~28 KB |
+| glossary.md | v0.5 | ~18 KB |
 
-**38 decisions resolved. 9 items open** (model §10). The model is decided enough to build.
+**38 decisions resolved. 11 items open** (model §10). The model is decided enough to build.
+
+### The bench
+
+`../../prototypes/facility-rethink/` holds an executable version of this document set — the
+six trailer dimensions, the derived flags, and the action catalog's preconditions implemented
+once, with the seven flows and the sharper stress tests walked through them step by step.
+
+It exists because prose cannot be run. Every change in the v0.21 / v0.11 / v0.5 round was
+found by building it and hitting a wall: an action with no state in which it was available, an
+effect naming a value no dimension has, a flow step with no action behind it. The four
+documents are still the specification; the bench is the thing that says when they disagree.
+Run the flows there after changing anything here.
 
 ### Known maintenance risks
 

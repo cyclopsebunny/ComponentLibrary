@@ -360,7 +360,7 @@ dialog footer{padding:11px 15px; border-top:1px solid var(--line); display:flex;
 <header class="top">
   <span class="brand">
     <b>Yard Flow Bench</b>
-    <span>Walks the yard &amp; dock document set against itself — model v0.20 · flows v0.4 · matrix v0.10 · glossary v0.4</span>
+    <span>Walks the yard &amp; dock document set against itself — model v0.21 · flows v0.5 · matrix v0.11 · glossary v0.5</span>
   </span>
   <span class="topctl">
     <label for="role">Acting as</label>
@@ -1354,15 +1354,13 @@ HOOK_TRAILER:{
   }
 },
 
-/* ENGINE ACTION — finding F10.
-   §5 has no action that changes the position of a trailer with a tractor
-   attached. DRIVER_SELF was deleted because a driver "needs a destination, not
-   a task", but nothing then records him arriving at it. Flows 1, 2, 3 and 5 and
-   stress tests 1-vi, 1-x and 12 cannot be walked without something here, so the
-   bench supplies it and marks it as its own. */
-DRIVER_POSITIONS:{
+/* Added to the catalog in model v0.21 (§5.2), after finding F10: nothing in §5
+   moved a trailer with a tractor attached. CREATE_MOVE_TASK is hidden while one
+   is and COMPLETE_MOVE requires a task, so four flows had a step with nothing
+   behind it and AT_GATE_OUT was unreachable for a live load. */
+POSITION_TRAILER:{
   label:"Driver spots it himself", on:"trailer", actor:"Driver",
-  engine:true, ref:"ENGINE — §5 names no such action (F10)",
+  ref:"model §5.2 — added in v0.21",
   gate(w,c){
     const t = c.t;
     if (!t) return [H(CLS.STRUCTURAL,"No trailer in context")];
@@ -1412,9 +1410,8 @@ DRIVER_POSITIONS:{
       w.docks[t.dock].state = "OCCUPIED"; w.docks[t.dock].holder = t.id;
       if (sensorsLive(w)) w.docks[t.dock].sensor = "OCCUPIED";
     }
-    log("act","Driver positions the trailer himself — <b>position → "+vals.where+
+    log("act","<b>POSITION_TRAILER</b> — driver places it himself; <b>position → "+vals.where+
       "</b>. <b>No move task exists or ever existed.</b>");
-    log("sys","This step has no action in the catalog. See finding F10.");
   }
 },
 
@@ -1956,7 +1953,7 @@ INTAKE_TRAILER:{
 
 ADVANCE_READINESS:{
   label:"Work readiness requirements", on:"trailer", actor:"Wash / maintenance",
-  ref:"model §3.7 — ENGINE: the doc names no action for this",
+  ref:"model §5.5 — added in v0.21",
   gate(w,c){
     if (!readinessLive(w)) return [H(CLS.STRUCTURAL,
       "No readiness requirements configured — the dimension does not exist here")];
@@ -2357,8 +2354,8 @@ function primaryFor(w, ctx){
     if (mv.state==="IN_PROGRESS" && avail("COMPLETE_MOVE")) return "COMPLETE_MOVE";
   }
   if (t && flagsOf(w,t.id).includes("NEEDS_MOVE") && avail("CREATE_MOVE_TASK")) return "CREATE_MOVE_TASK";
-  if (t && t.tractor && t.destination!=="NONE" && !atDestination(w,t) && avail("DRIVER_POSITIONS"))
-    return "DRIVER_POSITIONS";
+  if (t && t.tractor && t.destination!=="NONE" && !atDestination(w,t) && avail("POSITION_TRAILER"))
+    return "POSITION_TRAILER";
   if (v && takeLeg(w,v) && takeLeg(w,v).trailer_id &&
       readyToDepart(w,v,takeLeg(w,v).trailer_id) && avail("AUTHORIZE_DEPARTURE"))
     return "AUTHORIZE_DEPARTURE";
@@ -2453,7 +2450,7 @@ const SCENARIOS = [
     st("P2","P2","ASSIGN_DOCK","Dispatcher","Dock assigned while the driver waits.","flows §3 P2",
       w => { const t=w.trailers[bringLeg(w,w.visits.V1).trailer_id];
         return t.destination==="DOCK_ASSIGNED" ? [] : ["destination should be DOCK_ASSIGNED"]; }),
-    st("P3","P3","DRIVER_POSITIONS","Driver","Drives to the dock himself. No move task at any point.","flows §3 P3 · stress 1-vi",
+    st("P3","P3","POSITION_TRAILER","Driver","Drives to the dock himself. No move task at any point.","flows §3 P3 · stress 1-vi",
       w => { const t=w.trailers[bringLeg(w,w.visits.V1).trailer_id], o=[];
         if (t.position!=="DOCK") o.push("trailer should be at DOCK");
         if (w.moves.length) o.push("NO move task should exist — stress test 1-vi");
@@ -2505,7 +2502,7 @@ const SCENARIOS = [
       w => { const t=w.trailers[bringLeg(w,w.visits.V1).trailer_id];
         return t.empty_verification==="CLAIMED_EMPTY" ? [] : ["empty_verification should be CLAIMED_EMPTY"]; }),
     st("P2","P2","ASSIGN_DOCK","Dispatcher","Dock assigned.","flows §4"),
-    st("P3","P3","DRIVER_POSITIONS","Driver","Drives to the dock. No move task.","flows §4 P3"),
+    st("P3","P3","POSITION_TRAILER","Driver","Drives to the dock. No move task.","flows §4 P3"),
     st("P4b","P4","OPEN_SESSION","Dock crew","One session, pre-populated with every ASSIGNED row.","flows §4 P4b",
       w => { const s=w.sessions[0];
         return s && s.direction==="LOAD" && s.shipments.length===3 ? []
@@ -2539,7 +2536,7 @@ const SCENARIOS = [
     st("P1","P1","SELF_REGISTER","Driver","Registers at the sign.","flows §5 P1"),
     st("P1b","P1","ADMIT","Gate","Admitted.","flows §5 P1"),
     st("P2","P2","ASSIGN_YARD","Dispatcher","No dock free — the yard it is.","flows §5 P2"),
-    st("P3a","P3","DRIVER_POSITIONS","Driver","Drives to the drop point. Still no move task.","flows §5 P3a"),
+    st("P3a","P3","POSITION_TRAILER","Driver","Drives to the drop point. Still no move task.","flows §5 P3a"),
     st("P3b","P3","DROP_TRAILER","Driver","Tractor detaches — the handoff.","flows §5 P3b",
       w => { const t=w.trailers[bringLeg(w,w.visits.V1).trailer_id], o=[];
         if (t.tractor) o.push("tractor should be detached");
@@ -2617,7 +2614,7 @@ const SCENARIOS = [
     st("P1","P1","SELF_REGISTER","Driver","Registers; BRING = 71440, TAKE = 60917.","flows §7 P1"),
     st("P1b","P1","ADMIT","Gate","Admitted.","flows §7 P1"),
     st("P2","P2","ASSIGN_YARD","Dispatcher","A drop point for the trailer being brought.","flows §7"),
-    st("P3a","P3","DRIVER_POSITIONS","Driver","Takes T1 to its spot.","flows §7"),
+    st("P3a","P3","POSITION_TRAILER","Driver","Takes T1 to its spot.","flows §7"),
     st("P3b","P3","DROP_TRAILER","Driver","T1 dropped — yard-team responsibility.","flows §7 P3b"),
     st("P3c","P3","HOOK_TRAILER","Driver","T2 hooked.","flows §7 P3",
       w => w.trailers.T2.tractor ? [] : ["T2 should have a tractor attached"]),
@@ -2891,7 +2888,7 @@ const SCENARIOS = [
     st("a","P1","SELF_REGISTER","Driver","48291 is offered. One digit from 48219, seen here twice — read the warning in the log.","stress 1b"),
     st("b","P1","ADMIT","Gate","Admitted without friction. A genuinely new trailer and a mistyped familiar one look identical in the data.","stress 1a"),
     st("c","P4","ASSIGN_DOCK","Dispatcher","Dock assigned.","model §5.2"),
-    st("d","P4","DRIVER_POSITIONS","Driver","At the dock.","flows §3 P3"),
+    st("d","P4","POSITION_TRAILER","Driver","At the dock.","flows §3 P3"),
     st("e","P4","OPEN_SESSION","Dock lead","Unload opens.","model §5.3"),
     st("f","P4","START_SESSION","Dock crew","Mid-unload, someone spots the duplicate.","stress 1c"),
     st("g","P4","CORRECT_TRAILER_IDENTITY","Supervisor","Must be refused during active work — renaming the subject of work in progress produces a history nobody can read afterwards.","stress 1c",null,true),
@@ -2967,7 +2964,7 @@ const SEEDED = [
  body:"Matrix §1.1 assigns a treatment to each blocking <i>condition</i>, and §1.3 picks one reason by precedence when several fail. Neither says what to do when an action fails a hidden-class condition <i>and</i> a disabled-class one — a trailer holding inbound freight (hidden) that is also out of service (disabled). The engine hides, on the reasoning that a disabled control offering to fix the wrong thing is worse than no control. It is a real choice and it belongs in §1.1. Scenario “Cross-dock refusal” sets it up in two steps.",
  refs:"matrix §1.1 · matrix §1.3"},
 {id:"F10", sev:"blocks", title:"No action positions a trailer that has a driver",
- body:"Deleting DRIVER_SELF was right — a driver needs a destination, not a task — but §5 then has no action that changes such a trailer's position. CREATE_MOVE_TASK is hidden while a tractor is attached; COMPLETE_MOVE requires a task. So flows 1, 2, 3 and 5 and stress tests 1-vi, 1-x and 12 have a step with nothing behind it, and the trailer can never reach AT_GATE_OUT either — which is the position matrix §2.3 requires before AUTHORIZE_DEPARTURE and CHECK_OUT are anything but hidden. The bench supplies <span class=\"id\">DRIVER_POSITIONS</span>, marked as its own, and every flow above depends on it.",
+ body:"Deleting DRIVER_SELF was right — a driver needs a destination, not a task — but §5 then has no action that changes such a trailer's position. CREATE_MOVE_TASK is hidden while a tractor is attached; COMPLETE_MOVE requires a task. So flows 1, 2, 3 and 5 and stress tests 1-vi, 1-x and 12 have a step with nothing behind it, and the trailer can never reach AT_GATE_OUT either — which is the position matrix §2.3 requires before AUTHORIZE_DEPARTURE and CHECK_OUT are anything but hidden. The bench supplies <span class=\"id\">POSITION_TRAILER</span>, marked as its own, and every flow above depends on it.",
  refs:"model §3.5 · model §5.2 · matrix §2.3 · stress tests 1-vi, 1-x, 12"},
 {id:"F11", sev:"contradiction", title:"The empty-verification guard is bypassed by the path that replaced it",
  body:"ASSIGN_SHIPMENT requires <span class=\"id\">empty_verification ≠ UNVERIFIED</span> (§9 #6) — you may not plan freight onto a trailer nobody has confirmed is empty. But §9 #37 moved appointment-driven work off that action entirely: BIND_TRAILER_TO_LEG creates the TAKE leg's rows itself, and its preconditions do not mention empty verification at all. So the common case now skips the check and the exception path keeps it. Separately, VERIFY_EMPTY's precondition reads “load state <b>EMPTY</b>”, which an outbound live load stops satisfying the moment its leg is bound and the rows appear — under the literal reading the action can never fire on the flow that needs it. Both readings are in flow 2; watch the log at step P1a.",
@@ -2981,6 +2978,24 @@ const SEV = {
   gap:{l:"Unspecified case", t:"a"}, copy:{l:"Copy / vocabulary", t:"b"},
   unspecified:{l:"Engine had to choose", t:"a"}, note:{l:"Your note", t:"b"}
 };
+
+/* Where each finding was answered. The bodies stay as written — what was wrong
+   is still the useful record — but a finding with nothing against it here is
+   still open in the documents. */
+const APPLIED = {
+  F1:"matrix v0.11 §2.1",
+  F2:"matrix v0.11 §2.1",
+  F3:"model v0.21 §5.1 and §6.1 · flows v0.5 §2",
+  F4:"model v0.21 §5.1",
+  F5:"matrix v0.11 §3.2",
+  F6:"model v0.21 §5.1",
+  F7:"model v0.21 §5.1 · flows v0.5 §8",
+  F9:"matrix v0.11 §1.1",
+  F10:"model v0.21 §5.2 · matrix v0.11 §4 · flows v0.5 P3",
+  F11:"half — VERIFY_EMPTY reworded in model v0.21 §5.1; the real decision is now open item §10.10 for you",
+  F12:"model v0.21 §3.5 and §6.1 · glossary v0.5 §5.1"
+};
+SEEDED.forEach(f => { if (APPLIED[f.id]) f.fixed = APPLIED[f.id]; });
 
 /* ===========================================================================
    PART 6 — RENDER
@@ -3029,8 +3044,9 @@ function renderRail(){
   '<p style="margin-bottom:7px"><span class="id">MONO</span> is always an internal '+
   'identifier. Sans is always a displayed label. Glossary §1.1 insists they stay '+
   'different things.</p>'+
-  '<p>Actions the bench had to invent are labelled <b>ENGINE</b>. There is one, '+
-  'and finding F10 is why.</p></div>';
+  '<p>The bench and the documents now agree: the two actions it once had to '+
+  'invent are in the catalog, and the findings rail says which of its twelve '+
+  'findings have been applied and which are still open.</p></div>';
 }
 
 /* ---- spine ------------------------------------------------------------- */
@@ -3262,8 +3278,9 @@ function findingCard(f){
   const vd = VERDICTS[f.id];
   return '<div class="find"><div class="fh">'+
     '<span class="fn">'+esc(f.title)+'</span>'+
-    '<span class="bdg '+sev.t+'">'+esc(sev.l)+'</span></div>'+
+    '<span class="bdg '+(f.fixed?"g":sev.t)+'">'+esc(f.fixed?"Answered":sev.l)+'</span></div>'+
     '<p class="fb">'+f.body+'</p>'+
+    (f.fixed ? '<p class="fb" style="color:var(--ok)"><b>Applied in</b> '+esc(f.fixed)+'</p>' : '')+
     '<p class="fr">'+idt(f.id)+' · '+esc(f.refs||"")+
       (vd && vd.by ? ' · marked by '+esc(vd.by) : '')+'</p>'+
     '<div class="fa">'+
@@ -3280,7 +3297,12 @@ function findingCard(f){
 function renderFindings(){
   const all = SEEDED.concat(NOTES);
   $("#findpane").innerHTML =
-    '<div class="grp">From the build pass<i></i>'+SEEDED.length+'</div>' +
+    '<div class="grp">From the build pass<i></i>'+
+      SEEDED.filter(f=>f.fixed).length+' of '+SEEDED.length+' answered</div>' +
+    '<div class="find"><p class="fb" style="color:var(--steel)">Each of these is a place where '+
+    'the four documents could not all be implemented at once. The ones marked '+
+    '<b>Answered</b> have been applied to the documents; the rest are still open there. '+
+    'The bodies describe what was wrong, which stays the useful record.</p></div>' +
     SEEDED.map(findingCard).join("") +
     '<div class="grp">Yours<i></i>'+NOTES.length+'</div>' +
     (NOTES.length ? NOTES.map(findingCard).join("")

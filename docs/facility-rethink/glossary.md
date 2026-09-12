@@ -1,7 +1,13 @@
 # Glossary — Canonical Terms
 
-**Companion to:** `yard-dock-operations-model.md` v0.17, `action-availability-matrix.md` v0.7
-**Status:** Draft v0.4 — dock sensors; `SPOTTED` narrowed; `AUTHORIZE_DEPARTURE` rename
+**Companion to:** `yard-dock-operations-model.md` v0.21, `action-availability-matrix.md` v0.11
+**Status:** Draft v0.5 — `tractor` promoted to a stored dimension
+
+### Changes from v0.4
+- **`tractor` added as a stored trailer dimension** (§5.1). It was only ever listed in §7 as a derived flag under "computed, never stored", and there is nothing in the model to compute it from. Its writers are now named.
+- **`TRACTOR_ATTACHED` stays in §7** as a badge, annotated as a rendering of that dimension rather than a computed flag.
+
+*Found by implementing the document set as an executable rule engine; the engine treated every gate arrival as tractorless and handed live loads to the yard team.*
 **Purpose:** The single source of truth for every entity, state, action, flag, and label. When this document and another disagree, this one is wrong and should be corrected — but until it is, it is what the product, the training material, and support should say.
 
 ---
@@ -118,6 +124,7 @@ Names that appeared in earlier drafts and no longer exist. Listed so old notes r
 | **Fill declaration** | `OPEN` · `COMPLETE` | Human judgment; the system cannot infer fullness |
 | **Empty verification** | `UNVERIFIED` · `CLAIMED_EMPTY` · `VERIFIED_EMPTY` | Driver claim at the gate, with optional physical check |
 | **Identity confidence** | `CORROBORATED` · `SINGLE_SOURCE` · `DISPUTED` | Derived from identification readings |
+| **Tractor** | `ATTACHED` · `NONE` | **Stored, not derived.** Nothing else in the model records whether a tractor is on the trailer, so there is nothing to compute it from. Set on arrival by `BIND_TRAILER_TO_LEG` for a BRING leg and by `HOOK_TRAILER`; cleared by `DROP_TRAILER` and `CHECK_OUT`. Decides whether movement is a task or a destination (§6.3) |
 
 ### 5.2 TrailerLoad (per shipment)
 
@@ -247,7 +254,7 @@ Computed, never stored. Internal name → what a user sees.
 | `UNRECORDED_DOCK_OCCUPANCY` | "Unknown at dock" | Sensor occupied, records show nothing there |
 | `SPOT_UNCONFIRMED` | "Not at dock?" | Records show a trailer at the dock, sensor vacant |
 | `UNRECORDED_DOCK_DEPARTURE` | "Left dock unrecorded" | Sensor went vacant while a stay or session was open |
-| `TRACTOR_ATTACHED` | *(muted styling)* | A driver is hooked — needs a destination, not a move task |
+| `TRACTOR_ATTACHED` | *(muted styling)* | A driver is hooked — needs a destination, not a move task. **A rendering of the stored `tractor` dimension (§5.1), not a computed flag** — it is listed here only because it occupies a badge slot |
 | `NEEDS_MOVE` | "Needs move" | Position ≠ required position, and no open move task |
 | `DROPPED_NO_DESTINATION` | "Dropped — no dock" | No tractor, no destination. **Your problem, unassigned** |
 | `READY_TO_PULL` | "Ready to pull" | Work finished at a dock |

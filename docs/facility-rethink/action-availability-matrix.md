@@ -1,7 +1,17 @@
 # Action Availability Matrix
 
-**Companion to:** `yard-dock-operations-model.md` v0.13
-**Status:** Draft v0.10 — `AUTHORIZE_DEPARTURE` rename; dock sensor confirmation
+**Companion to:** `yard-dock-operations-model.md` v0.21
+**Status:** Draft v0.11 — gate-column corrections; hide-beats-disable; `POSITION_TRAILER`
+
+### Changes from v0.10
+All five found by implementing this document as an executable rule engine and walking the flows through it. Each is a place where the engine could not satisfy this document and the model at the same time.
+
+- **`ADMIT` is now A at `AT_FACILITY`** (§2.1). v0.10 marked it H there, but model §5.1's precondition is "`AT_FACILITY` or `AT_GATE`" and flows §3 P1b admits straight from `AT_FACILITY`. Since `RECORD_ARRIVAL` requires "no prior QR scan", a self-registered driver could never reach `AT_GATE` — so under v0.10 every self-registering driver was unadmittable.
+- **`SELF_REGISTER` is now A at `OFF_SITE`** (§2.1). v0.10 marked it H in all four columns, leaving no state in which the first step of five flows was available — the same circularity this document records fixing in v0.3 for `CHECK_IN`. The QR scan is the action; `AT_FACILITY` is its effect, not its precondition. `RECORD_ARRIVAL` was already treated this way in the same table.
+- **Hide beats disable** when conditions of both kinds fail (§1.1). Previously unstated, and §1.3 alone could not decide it.
+- **`AUTHORIZE_DEPARTURE` no longer requires the gate** (§2.3). Authorization is a records check; a live load is authorized at its dock. Only `CHECK_OUT` needs the trailer in the lane.
+- **`POSITION_TRAILER` added** (§4), matching the new action in model §5.2. Without it no action moved a driver-attached trailer and four flows had a step with nothing behind it.
+- **"Check the visit in first" → "Admit the visit first"** (§3.2). The old string used the term glossary §2 bans, and contradicted §2.1's wording for the same condition.
 **Purpose:** For any trailer in any state, define which actions appear, which appear disabled, which are hidden, and what the user is told — so a screen can be built without re-deriving preconditions from the action catalog.
 
 ### Changes from v0.6
@@ -45,6 +55,8 @@ For each condition that blocks an action, ask: **would the reason send the user 
 |---|---|
 | **Yes** — the clearing action is available on this trailer, in this position, to someone present | **Disabled, reason visible.** The control is a breadcrumb that teaches sequencing |
 | **No** — clearing it requires a different plan, a different position, or an operation nobody is about to perform | **Hidden.** A permanently-disabled control with an unchanging message is noise, and noise trains people to stop reading |
+
+**When conditions of both kinds fail at once, hiding wins.** An outbound assignment offered to a trailer that holds inbound freight *and* is out of service fails one hidden-class condition and one disabled-class one. Show the disabled control and its reason sends the user to return the trailer to service, after which the action is still not available — a breadcrumb pointing at the wrong door is worse than no control. So: **any failing hidden-class condition hides the action, whatever else also fails.** §1.3's precedence then only ever picks between conditions of the same kind.
 
 Worked examples, since the rule is a judgment and examples are how it gets applied consistently:
 
@@ -134,9 +146,9 @@ A single column cannot express these contexts, because presence and destination 
 
 | Action | `OFF_SITE` not registered | `AT_FACILITY` registered | `AT_GATE` | `ON_SITE` |
 |---|---|---|---|---|
-| `SELF_REGISTER` | **H** — requires scanning the QR sign on the property (§9 #31) | **H** already registered | **H** — use kiosk path | **H** |
+| `SELF_REGISTER` | **A** — the QR scan on the property *is* this action, and it is what produces `AT_FACILITY` | **H** already registered | **H** — use kiosk path | **H** |
 | `RECORD_ARRIVAL` | **A** | **A** | **H** already recorded | **H** |
-| `ADMIT` | **H** — not here | **H** — not here | **A**, or **D** "Identify the arriving trailer first" / "Dockpass expired or already used" | **H** already admitted |
+| `ADMIT` | **H** — not here | **A**, or **D** as at `AT_GATE` | **A**, or **D** "Identify the arriving trailer first" / "Dockpass expired or already used" | **H** already admitted |
 | `REGISTER_AND_ADMIT` | **H** | **H** — already registered | **A** — the single-step kiosk path | **H** |
 | `ASSIGN_DOCK` | **H** — nothing to assign to yet | **A** → "Dock Assigned — Pending Gate Check-In". Driver is on the property, minutes away (§2.13) | **A** | **A** — highest queue priority (§6.2) |
 | `RELEASE_DOCK` | **H** | **A** if a dock is `HELD` | **A** | **A** |
@@ -200,7 +212,8 @@ This is the section v0.2 got wrong. Treatment is listed per condition.
 | `CORRECT_TRAILER_IDENTITY` | Supervisor, no active work | **A** | — |
 | | Row `LOADING`/`UNLOADING` | **D** | "Cannot renumber during active work" |
 | `OPEN_SESSION`, `END_SESSION`, `PULL_FROM_DOCK` | Not at a dock | **H** | Position-wrong actions are always hidden |
-| `CHECK_OUT`, `AUTHORIZE_DEPARTURE` | Not at the gate | **H** | |
+| `CHECK_OUT` | Not at the gate | **H** | |
+| `AUTHORIZE_DEPARTURE` | Not at the gate | **A** | Authorization is a records check, not a lane operation — a live load is authorized while still at its dock (flows §3 P5a). Only `CHECK_OUT` needs the trailer at the gate |
 
 ### 2.4 `IN_MOTION`
 
@@ -282,7 +295,7 @@ All three are **D**: each has a clearing action available to someone present.
 | Session `ACTIVE` | D | "Work is in progress at the dock" |
 | Session `OPEN` | D | "End or cancel the open session first" |
 | Open MoveTask exists | D | "A move is already open for this trailer" |
-| Visit not checked in | D | "Check the visit in first" |
+| Visit not admitted | D | "Admit the visit first" |
 | Position `IN_MOTION` | H | Clearing action belongs to the spotter (§1.4) |
 | Position not `DOCK` when a dock is required | H | |
 | Position `OFF_SITE` | H | |
@@ -324,11 +337,12 @@ Reason shown: **"Not permitted for your role"** — never naming which role, sin
 
 | Trailer state | What it needs | Available actions |
 |---|---|---|
-| **Tractor attached** (live load, or a drop not yet dropped) | A destination | `ASSIGN_DOCK`, `ASSIGN_YARD`, `DROP_TRAILER`. **`CREATE_MOVE_TASK` is H** — "trailer has a driver" is not a blocked condition to explain, it is a different situation entirely (§1.1) |
+| **Tractor attached** (live load, or a drop not yet dropped) | A destination | `ASSIGN_DOCK`, `ASSIGN_YARD`, `POSITION_TRAILER`, `DROP_TRAILER`. **`CREATE_MOVE_TASK` is H** — "trailer has a driver" is not a blocked condition to explain, it is a different situation entirely (§1.1) |
 | **No tractor** (dropped, preloaded, repositioning) | A move task | `CREATE_MOVE_TASK`, then `ASSIGN_MOVE_TASK` → `START_MOVE` → `COMPLETE_MOVE` |
 
 | Move task action | | Notes |
 |---|---|---|
+| `POSITION_TRAILER` | A / D / H | **H** if no tractor is attached — this is yard-team work. **D** "Assign a dock or yard destination first" while `AWAITING_ASSIGNMENT`: a driver with nowhere to go is blocked on a decision, not on labour. **D** on an open session |
 | `CREATE_MOVE_TASK` | A / D / H | **H** if a tractor is attached. **D** "Assign a dock or yard destination first" if `AWAITING_ASSIGNMENT`. **D** "A move is already open for this trailer" |
 | `ASSIGN_MOVE_TASK` | A | To a spotter |
 | `START_MOVE` | A / D | **D** "Work is in progress at the dock" if a session is active |
