@@ -27,8 +27,8 @@ Not a UI prototype. It is the document set's own rules, implemented once and exe
 
 ## What you can do with it
 
-Fifteen scenarios: the seven flows of `flows.md` walked step by step against their own
-script, plus eight exception branches drawn from the stress tests. Each step declares what
+Sixteen scenarios: the seven flows of `flows.md` walked step by step against their own
+script, eight exception branches drawn from the stress tests, and one built for §10.12. Each step declares what
 the documents say should change, and the bench marks it matched or not. Going off script is
 allowed; the flow just stops predicting.
 
@@ -38,18 +38,50 @@ unused — that is model §1.2 under test), reveal hidden actions with their rea
 world events the flows depend on but no user performs — camera reads landing after the fact,
 dock sensors disagreeing with the records, the daily yard check.
 
+## Custody and the four histories
+
+The bench implements model §10.12 rather than only describing it, so the proposal can be judged
+by running it:
+
+- **`TrailerCustody`** replaces v0.21's stored `tractor` boolean. Each span carries the driver,
+  the unit, and a `holder_type`, and is sourced from a visit leg or a move task.
+  `TRACTOR_ATTACHED` is now genuinely derived — an open span held by a road tractor — which is
+  what §6.1 claimed all along.
+- **`holder_type` is tested everywhere**, never merely "is custody open". A road tractor holding
+  the trailer suppresses move-task creation; a yard truck holding it *is* the move.
+- **`TrailerStay`** is synced from position rather than written per action, so no action can
+  forget to open or close one.
+- **`DockStay`** is now a recorded span, not just a field on the trailer.
+- **Every event is stamped** with its actor and with the id of each span it falls inside. An
+  appointment's stamp stops at its own departure, which is what makes the gap visible.
+
+The **History panel** renders all four bracketings on one time axis and lets you switch which one
+divides the event list. The overlap claims under the timeline are read off the spans, not
+asserted — and the "inside no appointment" bucket is where the work that happens after the driver
+goes home actually lands.
+
+Start with **"One stay, two appointments"**: one trailer brought by one driver, unloaded days
+later by the yard team, taken away by a second driver. One stay, two appointments, one dock stay,
+three custody spans, and no two of those brackets nesting.
+
 ## Findings
 
-Twelve findings are built in, each one a place where the four documents could not all be
+Thirteen findings are built in, each one a place where the four documents could not all be
 implemented at once, with the sections that disagree named. Eleven have been applied back to
 the documents in `../../docs/facility-rethink/` — model v0.21, matrix v0.11, flows v0.5,
-glossary v0.5 — and the rail marks which. Two things are still open there:
+glossary v0.5 — and the rail marks which. Three things are still open there:
 
 - **§10.10 — does appointment-driven binding need the empty check `ASSIGN_SHIPMENT` has?**
   An operational decision, not an editorial one, so it is written up as an open item with a
   recommendation rather than resolved.
 - **`presence` on a fence crossing.** It is an Appointment dimension, but `COMPLETE_MOVE`
   changes it for a trailer that may have no appointment. A modelling decision.
+- **Where a trailer stay starts (F13).** §10.12's first wording said "gate-in to gate-out",
+  which cannot describe a company return that never crosses the gate. Opening at the
+  perimeter instead makes every yard-occupancy number include trailers outside the fence.
+  This is §10.11's `AT_FACILITY` ambiguity with a number attached, and the bench's answer is
+  a placeholder. Found by implementing §10.12, so it is a finding against text written in
+  this round rather than against the original set.
 
 The finding that mattered most, and the shape of the rest: **no action positioned a trailer
 that has a driver.** Deleting `DRIVER_SELF` was right, but §5 then had nothing that moved such
@@ -62,6 +94,7 @@ you are standing — they keep the scenario, the step and the state with them.
 
 ## Source documents
 
-Built against `yard-dock-operations-model.md` v0.20, `flows.md` v0.4,
-`action-availability-matrix.md` v0.10 and `glossary.md` v0.4. The documents are not in this
-repository; the section references in the page point into them.
+Built against `yard-dock-operations-model.md` v0.21, `flows.md` v0.5,
+`action-availability-matrix.md` v0.11 and `glossary.md` v0.5, which live beside this bench in
+`../../docs/facility-rethink/`. Every section reference in the page points into them, and the
+two should be changed together — that is the whole arrangement.

@@ -1577,7 +1577,11 @@ Raised by §3.6.2's own admission that it covers "two physically different situa
 
 | Entity | Definition | Contains |
 |---|---|---|
-| **TrailerStay** | **One continuous occupancy of the facility by one trailer**, gate-in to gate-out | 0..n DockStays · 0..n MoveTasks · 0..n TrailerCustody spans · referenced by 1..n VisitLegs |
+| **TrailerStay** | **One continuous occupancy of the facility by one trailer.** *Not* "gate-in to gate-out" — see below | 0..n DockStays · 0..n MoveTasks · 0..n TrailerCustody spans · referenced by 0..n VisitLegs |
+
+**Where the stay starts is an open question inside an open question.** "Gate-in to gate-out" was the first wording here and it does not survive pattern 9: a company driver parks in an *outside* lot and goes home, the trailer never crosses the gate, and it may sit for a day before a yard check finds it. Under that wording no stay opens, so its dwell is invisible and the readiness work that follows falls inside no bracket at all. But opening the stay at the perimeter instead makes every yard-occupancy number include trailers that are not through the fence. This is §10.11's `AT_FACILITY` ambiguity arriving with a number attached, and it should be decided with §10.11 rather than separately. The bench opens the stay on first occupancy of any facility position and flags the outside-the-fence case, which is a placeholder, not an answer.
+
+Note also **0..n VisitLegs**, not 1..n: pattern 9 is a stay with no leg at all.
 
 Deliberately parallel to DockStay (§2.6), which is "one continuous occupancy of a dock by one trailer". **Not** called a session: glossary §2 would ban that immediately against DockSession.
 

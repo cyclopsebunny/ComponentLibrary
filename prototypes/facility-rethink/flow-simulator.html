@@ -355,6 +355,52 @@ dialog footer{padding:11px 15px; border-top:1px solid var(--line); display:flex;
   padding:4px 9px; font-size:11.5px; font-weight:600; color:var(--steel); cursor:pointer}
 .tab[aria-selected="true"]{color:var(--ink); border-bottom-color:var(--nav)}
 .wide{overflow-x:auto}
+
+/* ---- history: four bracketings of one event log (model §10.12) --------- */
+.seg{display:inline-flex; gap:2px}
+.seg button{background:var(--surface); border:1px solid var(--line-2); padding:3px 9px;
+  font-size:11px; font-weight:600; cursor:pointer; color:var(--steel)}
+.seg button[aria-pressed="true"]{background:var(--nav); border-color:var(--nav); color:var(--nav-ink)}
+.seg button:first-child{border-radius:3px 0 0 3px}
+.seg button:last-child{border-radius:0 3px 3px 0}
+.tl{display:flex; flex-direction:column; gap:6px; min-width:0}
+.tlane{display:grid; grid-template-columns:96px minmax(0,1fr); gap:10px; align-items:start}
+.tlane>.ln{font-size:10px; font-weight:600; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--mute); padding-top:4px}
+.tlane.on>.ln{color:var(--ink)}
+.trk{display:flex; flex-direction:column; gap:3px; min-width:0}
+.trow{position:relative; height:19px; background:var(--surface); border-radius:2px}
+.bar{position:absolute; top:0; bottom:0; border-radius:2px; display:flex; align-items:center;
+  padding:0 5px; font-size:10px; font-weight:600; white-space:nowrap; overflow:hidden;
+  border:1px solid; min-width:3px}
+.bar.stay{background:var(--info-bg); border-color:var(--info-line); color:var(--info)}
+.bar.appt{background:var(--accent-bg); border-color:var(--accent); color:var(--accent)}
+.bar.dock{background:var(--ok-bg); border-color:var(--ok-line); color:var(--ok)}
+.bar.cust{background:var(--surface-3); border-color:var(--line-2); color:var(--ink-2)}
+.bar.cust.yard{background:var(--bad-bg); border-color:var(--bad-line); color:var(--bad)}
+.bar.live{border-right-style:dashed}
+.axis{display:grid; grid-template-columns:96px minmax(0,1fr); gap:10px; font-size:10px;
+  color:var(--mute)}
+.axis .ax{display:flex; justify-content:space-between}
+.brks{display:flex; flex-direction:column; gap:8px; min-width:0}
+.brk{border:1px solid var(--line); border-radius:4px; min-width:0}
+.brk>h4{margin:0; padding:6px 11px; background:var(--surface-2); border-bottom:1px solid var(--line);
+  font-size:11.5px; font-weight:700; display:flex; gap:8px; align-items:baseline; flex-wrap:wrap}
+.brk>h4 .sp{margin-left:auto; font-weight:400; font-size:10.5px; color:var(--steel)}
+.brk.orphan{border-style:dashed}
+.brk.orphan>h4{background:var(--surface); color:var(--steel)}
+.hev{display:grid; grid-template-columns:42px 104px minmax(0,1fr); gap:9px; padding:4px 11px;
+  font-size:11.5px; border-bottom:1px solid var(--surface-2); align-items:baseline}
+.hev:last-child{border-bottom:0}
+.hev .tm{color:var(--mute); font-size:10.5px}
+.hev .who{color:var(--steel); font-size:10.5px; overflow-wrap:anywhere}
+.hev .bo{overflow-wrap:anywhere}
+.hev.dev{background:var(--warn-bg)}
+@media (max-width:620px){
+  .tlane,.axis{grid-template-columns:1fr}
+  .hev{grid-template-columns:42px minmax(0,1fr)}
+  .hev .who{grid-column:2}
+}
 </style>
 
 <header class="top">
@@ -411,12 +457,20 @@ dialog footer{padding:11px 15px; border-top:1px solid var(--line); display:flex;
       <div class="bd" id="actions"></div>
     </section>
 
-    <section class="panel flat">
+    <section class="panel flat" id="scriptpanel">
       <header>
         <h2>Script</h2>
         <span class="hidnote" id="scriptstat"></span>
       </header>
       <div class="steps" id="steps"></div>
+    </section>
+
+    <section class="panel flat" id="histpanel">
+      <header>
+        <h2>History — four bracketings of one event log</h2>
+        <span class="seg" id="brackets" role="group" aria-label="Bracketing"></span>
+      </header>
+      <div class="bd" id="histbody"></div>
     </section>
   </main>
 
@@ -580,6 +634,7 @@ function blankWorld(cfg){
     docks: {}, spots: {}, lots: {},
     trailers: {}, shipments: {}, loads: [],
     visits: {}, sessions: [], moves: [], assignments: [],
+    custody: [], stays: [], dockStays: [],
     idents: [], events: [], returns: [],
     focusTrailer: null, focusVisit: null,
     seq: 1
@@ -600,7 +655,7 @@ function mkTrailer(w, o){
     readiness: (w.config.readiness_requirements||[]).length ? "NOT_READY" : "READY",
     service:"IN_SERVICE",
     fill:"OPEN", empty_verification:"UNVERIFIED",
-    tractor:false, sealed:false,
+    sealed:false,
     identity_confidence:"SINGLE_SOURCE", position_confidence:"REPORTED",
     first_visit:true, intake:null, stay:null, staged_since:null,
     last_variance:false, verified_by_check:true
@@ -621,6 +676,10 @@ function mkVisit(w, o){
   const v = Object.assign({
     id:o.id, registration:"NOT_REGISTERED", presence:"OFF_SITE",
     visit_type:"LIVE", party_type:"THIRD_PARTY", access_method:"DOCKPASS",
+    /* §2.4 already carries these; §10.12 argues custody of a particular
+       trailer is a leg fact while these stay the appointment's. */
+    driver: pick(DRIVERS, Object.keys(w.visits).length),
+    tractor: "TRC-"+(4100 + Object.keys(w.visits).length*7),
     legs:[], dockpass:null, dockpass_consumed:false,
     arrived_at:null, admitted_at:null, on_site_since:null,
     window:[9*60, 11*60], turned_away:false, departed_at:null,
@@ -650,6 +709,93 @@ function visitOfTrailer(w, tid){
 }
 const onSite = t => !["OFF_SITE"].includes(t.position) &&
   !(t.position==="LOT" && t.lot && W.lots[t.lot] && !W.lots[t.lot].inside_fence);
+
+/* ===========================================================================
+   CUSTODY, STAYS, DOCK STAYS — model §10.12
+
+   Custody replaces the stored `tractor` boolean of v0.21. A span records WHO
+   had the trailer and with WHAT, so the history can answer "who moved this"
+   instead of only "was something attached".
+
+   `holder_type` is load-bearing and the two values mean OPPOSITE things to
+   §3.5: a ROAD_TRACTOR holding the trailer suppresses move-task creation,
+   while a YARD_TRUCK holding it *is* the move in progress. Every rule below
+   tests the holder type, never merely whether custody is open.
+   ======================================================================== */
+
+const DRIVERS  = ["R. Alvarez","T. Whitfield","P. Nakamura","S. Boone","L. Ferreira"];
+const SPOTTERS = ["J. Ruiz","M. Osei","D. Klein"];
+const pick = (list,n) => list[Math.abs(n) % list.length];
+
+function openCustody(w, tid, holder_type, source, who, unit){
+  closeCustody(w, tid, "superseded");
+  const n = w.custody.length;
+  const c = {
+    id:"CU"+(w.seq++), trailer_id:tid, holder_type, source: source || {kind:"—"},
+    driver: who  || (holder_type==="ROAD_TRACTOR" ? pick(DRIVERS,n) : pick(SPOTTERS,n)),
+    unit:   unit || (holder_type==="ROAD_TRACTOR" ? "TRC-"+(4100+n*7) : "YT-"+(n%4+1)),
+    started_at: w.clock, ended_at: null
+  };
+  w.custody.push(c);
+  return c;
+}
+function closeCustody(w, tid, why){
+  const open = w.custody.filter(c => c.trailer_id===tid && c.ended_at==null);
+  open.forEach(c => { c.ended_at = w.clock; c.end_reason = why || null; });
+  return open;
+}
+const custodyOpen = (w,tid) => w.custody.find(c => c.trailer_id===tid && c.ended_at==null) || null;
+/* The derived flag §6.1 always claimed this was. */
+function hasTractor(w, tid){
+  const c = custodyOpen(w,tid);
+  return !!(c && c.holder_type==="ROAD_TRACTOR");
+}
+function underYardTruck(w, tid){
+  const c = custodyOpen(w,tid);
+  return c && c.holder_type==="YARD_TRUCK" ? c : null;
+}
+
+/* TrailerStay — one continuous occupancy of the FACILITY by one trailer,
+   parallel to DockStay. Synced rather than written at each site, so no action
+   can forget to open or close one. */
+const stayOpen = (w,tid) => w.stays.find(s => s.trailer_id===tid && s.closed_at==null) || null;
+function syncStays(w){
+  Object.values(w.trailers).forEach(t => {
+    if (t.retired_into) return;
+    const here = t.position!=="OFF_SITE";
+    const open = stayOpen(w,t.id);
+    if (here && !open){
+      const inFence = onSite(t);
+      w.stays.push({id:"TS"+(w.seq++), trailer_id:t.id, opened_at:w.clock,
+        closed_at:null, legs:[], opened_inside_fence:inFence});
+      if (!inFence) log("dev","<b>TrailerStay</b> opened for "+t.number+
+        " in an <b>outside lot</b> — it never crossed the gate. §10.12 defines a stay as "+
+        "“gate-in to gate-out”, which does not describe this. Finding F13.");
+    } else if (!here && open){
+      open.closed_at = w.clock;
+    }
+  });
+}
+function noteLeg(w, tid, label){
+  const s = stayOpen(w,tid);
+  if (s && !s.legs.includes(label)) s.legs.push(label);
+}
+
+/* DockStay recorded as a span, not only as a field on the trailer. */
+function openDockStay(w, t){
+  t.stay = {dock:t.dock, opened_at:w.clock};
+  const d = {id:"DS"+(w.seq++), trailer_id:t.id, dock:t.dock,
+    spotted_at:w.clock, pulled_at:null};
+  w.dockStays.push(d);
+  t.stay.id = d.id;
+  return d;
+}
+function closeDockStay(w, t){
+  const d = w.dockStays.find(x => x.trailer_id===t.id && x.pulled_at==null);
+  if (d) d.pulled_at = w.clock;
+  t.stay = null;
+  return d;
+}
 
 /* ---- load state, model §3.1 (precedence order; first match wins) ------- */
 function loadState(w, tid){
@@ -689,7 +835,7 @@ function flagsOf(w, tid){
   const inOutsideLot = t.position==="LOT" && t.lot && !w.lots[t.lot].inside_fence;
 
   if (ls==="INTEGRITY_ALARM") f.push("INTEGRITY_ALARM");
-  if (t.tractor) f.push("TRACTOR_ATTACHED");
+  if (hasTractor(w,t.id)) f.push("TRACTOR_ATTACHED");
   if (t.destination==="AWAITING_ASSIGNMENT") f.push("AWAITING_DOCK");
   if (atDestination(w,t)) f.push("AT_DESTINATION");
   /* SPOTTED is the narrow sense only: at a dock AND sensor-confirmed (glossary §2) */
@@ -705,9 +851,9 @@ function flagsOf(w, tid){
       if (t.stay || sess) f.push("UNRECORDED_DOCK_DEPARTURE");
     }
   }
-  if (!t.tractor && (t.position==="YARD_SPOT"||t.position==="LOT") &&
+  if (!hasTractor(w,t.id) && (t.position==="YARD_SPOT"||t.position==="LOT") &&
       t.destination==="AWAITING_ASSIGNMENT") f.push("DROPPED_NO_DESTINATION");
-  if (!mv && t.destination!=="NONE" && !atDestination(w,t) && onSite(t) && !t.tractor)
+  if (!mv && t.destination!=="NONE" && !atDestination(w,t) && onSite(t) && !hasTractor(w,t.id))
     f.push("NEEDS_MOVE");
   if (inOutsideLot) f.push("OUTSIDE_PERIMETER");
   if (inOutsideLot && hasFreight(w,tid)) f.push("FREIGHT_OUTSIDE_PERIMETER");
@@ -807,8 +953,28 @@ function displayStatus(w, tid){
 }
 
 /* ---- event log --------------------------------------------------------- */
+/* Every event is stamped with the actor and with the id of each span it falls
+   inside, because §10.12's whole point is that the same entry belongs to four
+   different brackets at once and no bracket contains another. Stamping at write
+   time is what lets the history be re-divided without re-deriving anything. */
+let ACTOR = "system";
 function log(kind, body){
-  W.events.push({at:W.clock, kind, body});
+  const t = W.focusTrailer ? W.trailers[W.focusTrailer] : null;
+  const c = ctxOf(W);
+  const tr = (t || c.t);
+  const stay = tr ? stayOpen(W, tr.id) : null;
+  const cu   = tr ? custodyOpen(W, tr.id) : null;
+  const ds   = tr ? W.dockStays.find(x => x.trailer_id===tr.id && x.pulled_at==null) : null;
+  /* An appointment's bracket ends when the visit does. Stamping a departed
+     visit on later events is what made the gap in flow 3 look like it was
+     still inside the appointment — it is not, and that is §10.12's point. */
+  const liveAppt = c.v && !c.v.departed_at && !c.v.turned_away ? c.v : null;
+  W.events.push({at:W.clock, kind, body, actor:ACTOR,
+    trailer_id: tr ? tr.id : null,
+    stay_id: stay ? stay.id : null,
+    appt_id: liveAppt ? liveAppt.id : null,
+    dock_stay_id: ds ? ds.id : null,
+    custody_id: cu ? cu.id : null});
 }
 const hhmm = m => String(Math.floor(m/60)%24).padStart(2,"0") + ":" + String(m%60).padStart(2,"0");
 /* ===========================================================================
@@ -1173,7 +1339,8 @@ CHECK_OUT:{
     if (tl && tl.trailer_id){
       const t = w.trailers[tl.trailer_id];
       releasePosition(w,t);
-      t.position = "OFF_SITE"; t.tractor = false; t.destination = "NONE";
+      closeCustody(w, t.id, "departed");
+      t.position = "OFF_SITE"; t.destination = "NONE";
       rowsOf(w,t.id).filter(r => r.direction==="OUTBOUND").forEach(r => {
         w.shipments[r.shipment_id].status = "DEPARTED";
       });
@@ -1252,12 +1419,12 @@ ASSIGN_DOCK:{
     w.assignments.push({id:"DA"+(w.seq++), trailer_id:t.id, dock:d.id, state:"HELD", at:w.clock});
     t.destination = "DOCK_ASSIGNED"; t.requested_destination = "DOCK "+d.id;
     log("act","<b>ASSIGN_DOCK</b> — dock "+d.id+" <b>HELD</b>; <b>destination → DOCK_ASSIGNED</b>.");
-    if (w.config.auto_create_move_on_dock_assignment && !t.tractor && onSite(t) && !openMove(w,t.id)){
+    if (w.config.auto_create_move_on_dock_assignment && !hasTractor(w,t.id) && onSite(t) && !openMove(w,t.id)){
       w.moves.push({id:"MV"+(w.seq++), trailer_id:t.id, requested_destination:"DOCK "+d.id,
         state:"PENDING", at:w.clock});
       log("sys","Facility is configured for automatic move creation — <b>MoveTask PENDING</b> with no human (§2.11).");
     }
-    if (t.tractor) log("sys","Tractor attached: no move task. The driver is told where to go (§3.5).");
+    if (hasTractor(w,t.id)) log("sys","Tractor attached: no move task. The driver is told where to go (§3.5).");
   }
 },
 
@@ -1307,14 +1474,16 @@ DROP_TRAILER:{
   gate(w,c){
     const t = c.t;
     if (!t) return [H(CLS.STRUCTURAL,"No trailer in context")];
-    if (!t.tractor) return [H(CLS.STRUCTURAL,"No tractor attached")];
+    if (!hasTractor(w,t.id)) return [H(CLS.STRUCTURAL,"No tractor attached")];
     if (!["DOCK","YARD_SPOT","LOT"].includes(t.position))
       return [H(CLS.PHYSICAL,"Drop happens at a dock or a yard spot")];
     return [];
   },
   apply(w,c){
     const t = c.t;
-    t.tractor = false;
+    const held = closeCustody(w, t.id, "dropped")[0];
+    if (held) log("sys","Custody "+held.id+" closed — "+held.driver+" / "+held.unit+
+      " had it for "+(w.clock-held.started_at)+" min. That span is the history entry.");
     if (t.position!=="DOCK" && t.destination!=="DOCK_ASSIGNED"){
       t.destination = "AWAITING_ASSIGNMENT";
       log("act","<b>DROP_TRAILER</b> — tractor detached. Yard-team responsibility now; "+
@@ -1332,7 +1501,7 @@ HOOK_TRAILER:{
   gate(w,c){
     const t = c.t;
     if (!t) return [H(CLS.STRUCTURAL,"No trailer in context")];
-    if (t.tractor) return [H(CLS.STRUCTURAL,"A tractor is already attached")];
+    if (custodyOpen(w,t.id)) return [H(CLS.STRUCTURAL, hasTractor(w,t.id) ? "A tractor is already attached" : "A yard truck has it — the move is in progress")];
     if (!onSite(t) && t.position!=="LOT") return [H(CLS.PHYSICAL,"Trailer is not here")];
     const v = c.v;
     const tl = v && takeLeg(w,v);
@@ -1346,11 +1515,15 @@ HOOK_TRAILER:{
     return f;
   },
   apply(w,c){
-    const t = c.t;
-    t.tractor = true;
+    const t = c.t, v = c.v;
+    const tl = takeLeg(w,v);
+    const cu = openCustody(w, t.id, "ROAD_TRACTOR",
+      {kind:"LEG", id:(tl?tl.kind:"TAKE")+" leg of "+v.id}, v.driver, v.tractor);
+    noteLeg(w, t.id, "TAKE · "+v.id);
     const mv = openMove(w,t.id);
     if (mv){ mv.state = "CANCELLED"; log("sys","Pending move task cancelled — a hooked trailer needs none."); }
-    log("act","<b>HOOK_TRAILER</b> — tractor attached. <b>TRACTOR_ATTACHED</b>; no move task from here.");
+    log("act","<b>HOOK_TRAILER</b> — custody "+cu.id+" opens: <b>"+cu.driver+"</b> / "+cu.unit+
+      " (road tractor). <b>TRACTOR_ATTACHED</b> is now derived from this span; no move task from here.");
   }
 },
 
@@ -1364,7 +1537,7 @@ POSITION_TRAILER:{
   gate(w,c){
     const t = c.t;
     if (!t) return [H(CLS.STRUCTURAL,"No trailer in context")];
-    if (!t.tractor) return [H(CLS.STRUCTURAL,"No tractor attached — this is yard-team work")];
+    if (!hasTractor(w,t.id)) return [H(CLS.STRUCTURAL,"No tractor attached — this is yard-team work")];
     const v = c.v;
     if (v && !["ON_SITE","AUTHORIZED_TO_DEPART"].includes(v.presence))
       return [D(CLS.PHYSICAL, WHY.NOT_ADMITTED)];
@@ -1406,7 +1579,7 @@ POSITION_TRAILER:{
     if (t.position==="DOCK"){
       const a = heldAssign(w,t.id);
       if (a && a.dock===t.dock){ a.state="FULFILLED"; }
-      t.stay = {dock:t.dock, opened_at:w.clock};
+      openDockStay(w,t);
       w.docks[t.dock].state = "OCCUPIED"; w.docks[t.dock].holder = t.id;
       if (sensorsLive(w)) w.docks[t.dock].sensor = "OCCUPIED";
     }
@@ -1420,7 +1593,7 @@ CREATE_MOVE_TASK:{
   gate(w,c){
     const t = c.t;
     if (!t) return [H(CLS.STRUCTURAL,"No trailer in context")];
-    if (t.tractor) return [H(CLS.STRUCTURAL,"Trailer has a driver — it needs a destination, not a task")];
+    if (hasTractor(w,t.id)) return [H(CLS.STRUCTURAL,"Trailer has a driver — it needs a destination, not a task")];
     if (openMove(w,t.id)) return [D(CLS.PHYSICAL, WHY.MOVE_OPEN)];
     const f = [];
     if (!onSite(t) && t.position!=="LOT") f.push(H(CLS.PHYSICAL,"Trailer is not on site"));
@@ -1453,8 +1626,10 @@ ASSIGN_MOVE_TASK:{
   },
   apply(w,c){
     const m = openMove(w,c.t.id);
-    m.state = "ASSIGNED"; m.assignee = "Spotter 3";
-    log("act","<b>ASSIGN_MOVE_TASK</b> — to Spotter 3.");
+    m.state = "ASSIGNED";
+    m.assignee = pick(SPOTTERS, w.custody.length + w.moves.length);
+    log("act","<b>ASSIGN_MOVE_TASK</b> — to "+m.assignee+
+      ". Custody opens when the move starts, not now.");
   }
 },
 
@@ -1474,14 +1649,21 @@ START_MOVE:{
     const t = c.t, m = openMove(w,t.id);
     m.state = "IN_PROGRESS"; m.origin = t.position;
     if (t.position==="DOCK" && t.stay){
-      log("sys","DockStay on dock "+t.dock+" closed on move start.");
+      const d = closeDockStay(w,t);
+      log("sys","DockStay "+(d?d.id:"")+" on dock "+t.dock+" closed on move start.");
       w.docks[t.dock].state = "FREE"; w.docks[t.dock].holder = null;
       if (sensorsLive(w)) w.docks[t.dock].sensor = "VACANT";
-      t.stay = null;
     }
     releasePosition(w,t);
     t.position = "IN_MOTION";
-    log("act","<b>START_MOVE</b> — <b>position → IN_MOTION</b>; origin released.");
+    const cu = openCustody(w, t.id, "YARD_TRUCK", {kind:"MOVE", id:m.id},
+      m.assignee || undefined);
+    m.assignee = cu.driver;
+    log("act","<b>START_MOVE</b> — <b>position → IN_MOTION</b>; origin released. Custody "+
+      cu.id+" opens: <b>"+cu.driver+"</b> / "+cu.unit+" (yard truck).");
+    log("sys","Same entity as the driver's custody, opposite meaning to §3.5: a yard truck "+
+      "holding the trailer <b>is</b> the move. A rule testing “custody open” rather than "+
+      "“open to a road tractor” would suppress the very task it is executing.");
   }
 },
 
@@ -1518,11 +1700,14 @@ COMPLETE_MOVE:{
     t.last_variance = !!(m.requested_destination && actual!==m.requested_destination);
     if (t.last_variance) log("dev","<b>PLACEMENT_VARIANCE</b> — asked for "+
       m.requested_destination+", reported "+actual+". A normal reported outcome, not an exception.");
-    log("act","<b>COMPLETE_MOVE</b> — <b>position → "+actual+"</b>.");
+    const held = closeCustody(w, t.id, "move complete")[0];
+    log("act","<b>COMPLETE_MOVE</b> — <b>position → "+actual+"</b>."+
+      (held ? " Custody "+held.id+" closed — "+held.driver+" had it "+
+        (w.clock-held.started_at)+" min." : ""));
     if (t.position==="DOCK"){
       const a = heldAssign(w,t.id);
       if (a && a.dock===t.dock){ a.state = "FULFILLED"; log("sys","<b>DockAssignment → FULFILLED</b>."); }
-      t.stay = {dock:t.dock, opened_at:w.clock};
+      openDockStay(w,t);
       if (sensorsLive(w)) w.docks[t.dock].sensor = "OCCUPIED";
       w.docks[t.dock].state = "OCCUPIED"; w.docks[t.dock].holder = t.id;
     }
@@ -1556,7 +1741,8 @@ CANCEL_MOVE:{
     const t = c.t, m = openMove(w,t.id);
     m.state = "CANCELLED";
     if (t.position==="IN_MOTION") placeAt(w,t, vals.actual || "LOT OUTSIDE");
-    log("act","<b>CANCEL_MOVE</b> — abandoned; reservations released.");
+    closeCustody(w, t.id, "move cancelled");
+    log("act","<b>CANCEL_MOVE</b> — abandoned; reservations released, custody closed.");
   }
 },
 
@@ -1787,7 +1973,7 @@ PULL_FROM_DOCK:{
     if (t.position!=="DOCK") return [H(CLS.PHYSICAL,"Not at a dock")];
     const s = openSession(w,t.id);
     if (s) return [D(CLS.PHYSICAL, s.state==="ACTIVE" ? WHY.SESSION_ACTIVE : WHY.SESSION_OPEN)];
-    if (t.tractor) return [H(CLS.STRUCTURAL,"The driver will pull it himself — no task needed")];
+    if (hasTractor(w,t.id)) return [H(CLS.STRUCTURAL,"The driver will pull it himself — no task needed")];
     if (openMove(w,t.id)) return [D(CLS.PHYSICAL, WHY.MOVE_OPEN)];
     return [];
   },
@@ -2119,7 +2305,12 @@ function bindLeg(w, v, leg, number, source){
      action's effects in §5 actually assign this fact on arrival.
      A TAKE-leg trailer is already standing in the yard; its tractor arrives
      separately and attaches at HOOK_TRAILER. */
-  if (leg.kind==="BRING") t.tractor = true;
+  if (leg.kind==="BRING"){
+    const cu = openCustody(w, t.id, "ROAD_TRACTOR",
+      {kind:"LEG", id:"BRING leg of "+v.id}, v.driver, v.tractor);
+    log("sys","Custody "+cu.id+" opens: <b>"+cu.driver+"</b> / "+cu.unit+
+      " brought it in. <b>TRACTOR_ATTACHED</b> derives from this (§10.12).");
+  }
   t.identity_confidence = "SINGLE_SOURCE";
   w.idents.push({kind:"ENTRY", read_trailer:null, declared_trailer:t.id, source,
     unresolved:false, at:w.clock});
@@ -2354,7 +2545,7 @@ function primaryFor(w, ctx){
     if (mv.state==="IN_PROGRESS" && avail("COMPLETE_MOVE")) return "COMPLETE_MOVE";
   }
   if (t && flagsOf(w,t.id).includes("NEEDS_MOVE") && avail("CREATE_MOVE_TASK")) return "CREATE_MOVE_TASK";
-  if (t && t.tractor && t.destination!=="NONE" && !atDestination(w,t) && avail("POSITION_TRAILER"))
+  if (t && hasTractor(w,t.id) && t.destination!=="NONE" && !atDestination(w,t) && avail("POSITION_TRAILER"))
     return "POSITION_TRAILER";
   if (v && takeLeg(w,v) && takeLeg(w,v).trailer_id &&
       readyToDepart(w,v,takeLeg(w,v).trailer_id) && avail("AUTHORIZE_DEPARTURE"))
@@ -2412,8 +2603,18 @@ function baseYard(w){
 }
 /* blocked:true marks a step the documents expect to be REFUSED — the script
    advances on "Confirm refused" rather than on the action succeeding. */
-const st = (id,phase,doId,actor,says,ref,check,blocked) =>
-  ({id,phase,do:doId,actor,says,ref,check,blocked});
+const st = (id,phase,doId,actor,says,ref,check,blocked,focus) =>
+  ({id,phase,do:doId,actor,says,ref,check,blocked,focus});
+
+/* Some steps act on a different object than the previous one — the second
+   trailer of a swap, the second appointment of a stay. The step says so and
+   the bench follows, rather than making you hunt for the focus button. */
+function applyStepFocus(){
+  const s = currentStep();
+  if (!s || !s.focus) return;
+  if (s.focus.t) W.focusTrailer = s.focus.t;
+  if (s.focus.v) W.focusVisit = s.focus.v;
+}
 
 const SCENARIOS = [
 {
@@ -2539,7 +2740,7 @@ const SCENARIOS = [
     st("P3a","P3","POSITION_TRAILER","Driver","Drives to the drop point. Still no move task.","flows §5 P3a"),
     st("P3b","P3","DROP_TRAILER","Driver","Tractor detaches — the handoff.","flows §5 P3b",
       w => { const t=w.trailers[bringLeg(w,w.visits.V1).trailer_id], o=[];
-        if (t.tractor) o.push("tractor should be detached");
+        if (hasTractor(w,t.id)) o.push("tractor custody should be closed");
         if (t.destination!=="AWAITING_ASSIGNMENT") o.push("destination should return to AWAITING_ASSIGNMENT");
         if (!flagsOf(w,t.id).includes("DROPPED_NO_DESTINATION")) o.push("DROPPED_NO_DESTINATION should be raised");
         return o; }),
@@ -2582,7 +2783,7 @@ const SCENARIOS = [
     st("P1b","P1","ADMIT","Gate","Admitted.","flows §6 P1"),
     st("P3","P3","HOOK_TRAILER","Driver","Hooks the staged trailer. Any pending move task is cancelled.","flows §6 P3 · stress 1-xi",
       w => { const t=w.trailers.T2, o=[];
-        if (!t.tractor) o.push("tractor should be attached");
+        if (!hasTractor(w,t.id)) o.push("road-tractor custody should be open");
         if (openMove(w,"T2")) o.push("any pending move task should have been cancelled");
         return o; }),
     st("P5a","P5","AUTHORIZE_DEPARTURE","Clerk","Shipments match the TAKE leg, fill complete, sealed.","flows §6 P5a"),
@@ -2617,7 +2818,7 @@ const SCENARIOS = [
     st("P3a","P3","POSITION_TRAILER","Driver","Takes T1 to its spot.","flows §7"),
     st("P3b","P3","DROP_TRAILER","Driver","T1 dropped — yard-team responsibility.","flows §7 P3b"),
     st("P3c","P3","HOOK_TRAILER","Driver","T2 hooked.","flows §7 P3",
-      w => w.trailers.T2.tractor ? [] : ["T2 should have a tractor attached"]),
+      w => hasTractor(w,"T2") ? [] : ["T2 should be under road-tractor custody"]),
     st("P5","P5","AUTHORIZE_DEPARTURE","Clerk","Authorized on T2. T1 stays.","flows §7 P5"),
     st("P5b","P5","CHECK_OUT","Gate","T2 departs; T1 remains on site.","flows §7 P5",
       w => { const o=[];
@@ -2688,6 +2889,75 @@ const SCENARIOS = [
 
 /* ---------------- exception branches ----------------------------------- */
 {
+  id:"H1", group:"Custody and histories", name:"One stay, two appointments",
+  sub:"model §10.12 · three custody spans",
+  ref:"model §10.12 · §4 pattern 7",
+  dek:"The case that breaks a single history. One trailer is brought by one driver, unloaded days later by the yard team, and taken away by a second driver on a different appointment. One trailer stay, two appointments, one dock stay, three custody spans — and no two of those brackets nest inside each other. Watch the History panel as you go.",
+  phases:["P0","P1","P2","P3","P4","P5","P6"],
+  seed(w){
+    baseYard(w);
+    mkShipment(w,{id:"SHP-1601", direction:"INBOUND", consignee:"This facility"});
+    /* an existing record, off site — bindLeg reuses it, so the second
+       appointment's TAKE leg can name the same trailer up front */
+    const t = mkTrailer(w,{id:"TX", number:"71440", carrier:"ODFL"});
+    t.first_visit = false;
+    mkVisit(w,{id:"V1", visit_type:"DROP", window:[9*60,11*60], legs:[
+      {kind:"BRING", trailer_id:null, hint_number:"71440", carrier:"ODFL",
+       expected_shipment_ids:["SHP-1601"]}]});
+    mkVisit(w,{id:"V2", visit_type:"DROP", window:[13*60,15*60], legs:[
+      {kind:"TAKE", trailer_id:"TX", expected_shipment_ids:[]}]});
+    w.focusVisit = "V1";
+  },
+  script:[
+    st("a","P1","SELF_REGISTER","Driver 1","First appointment. The driver who brings it opens custody span one.","flows §5 P1",
+      w => { const cu = custodyOpen(w,"TX");
+        return cu && cu.holder_type==="ROAD_TRACTOR" ? [] : ["a road-tractor custody span should be open"]; }),
+    st("b","P1","ADMIT","Gate","Admitted. The trailer stay opens here.","model §10.12",
+      w => stayOpen(w,"TX") ? [] : ["a TrailerStay should be open"]),
+    st("c","P2","ASSIGN_YARD","Dispatcher","To a yard spot.","flows §5 P2"),
+    st("d","P3","POSITION_TRAILER","Driver 1","He parks it himself.","flows §5 P3a"),
+    st("e","P3","DROP_TRAILER","Driver 1","Tractor detaches — custody span one closes. Its duration is the history entry.","flows §5 P3b",
+      w => custodyOpen(w,"TX") ? ["custody should be closed after the drop"] : []),
+    st("f","P5","AUTHORIZE_DEPARTURE","Clerk","Authorized to leave bobtail.","flows §5 P5"),
+    st("g","P5","CHECK_OUT","Gate","**The first appointment ends here — the trailer stay does not.**","flows §5 P5",
+      w => { const o=[];
+        if (w.visits.V1.presence!=="DEPARTED") o.push("V1 should be DEPARTED");
+        if (!stayOpen(w,"TX")) o.push("the trailer stay must still be open — the trailer has not left");
+        return o; }),
+    st("h","P2","@TICK","—","The gap. No driver, no detention, nobody waiting.","flows §5"),
+    st("i","P2","ASSIGN_DOCK","Dispatcher","A dock frees up. Assigned to the trailer, with no visit attached at all.","flows §5 P2′"),
+    st("j","P3","CREATE_MOVE_TASK","Dispatcher","Now a move task exists.","model §3.5"),
+    st("k","P3","ASSIGN_MOVE_TASK","Dispatcher","To a spotter.","model §5.2"),
+    st("l","P3","START_MOVE","Spotter","Custody span two opens — a <b>yard truck</b> this time, which means the opposite thing to §3.5.","model §10.12",
+      w => { const cu = custodyOpen(w,"TX");
+        return cu && cu.holder_type==="YARD_TRUCK" ? [] : ["a yard-truck custody span should be open"]; }),
+    st("m","P3","COMPLETE_MOVE","Spotter","Placed at the dock; custody span two closes. The dock stay opens.","model §5.2",
+      w => w.dockStays.length ? [] : ["a DockStay should have opened"]),
+    st("n","P4","OPEN_SESSION","Dock lead","Unload — inside the trailer stay, inside no appointment.","model §5.3"),
+    st("o","P4","START_SESSION","Dock crew","Working.","model §5.3"),
+    st("p","P4","END_SESSION","Dock lead","Reconciled. Switch the History bracketing to Appointment and see this land under “inside no appointment”.","model §5.3"),
+    st("q","P1","SELF_REGISTER","Driver 2","**Second appointment.** A different driver, days later in real life.","flows §6 P1",
+      null,false,{v:"V2",t:"TX"}),
+    st("r","P1","ADMIT","Gate","Admitted on the second appointment.","flows §6 P1",
+      null,false,{v:"V2",t:"TX"}),
+    st("s","P3","HOOK_TRAILER","Driver 2","Custody span three — a second road tractor, on a second appointment, inside the same trailer stay.","model §10.12",
+      w => { const road = w.custody.filter(c => c.trailer_id==="TX" && c.holder_type==="ROAD_TRACTOR");
+        return road.length>=2 ? [] : ["there should now be two road-tractor custody spans"]; },
+      false,{v:"V2",t:"TX"}),
+    st("t","P5","AUTHORIZE_DEPARTURE","Clerk","Authorized.","model §5.1",null,false,{v:"V2",t:"TX"}),
+    st("u","P5","CHECK_OUT","Gate","**Now** the trailer stay closes, two appointments after it opened.","model §10.12",
+      w => { const o=[];
+        if (stayOpen(w,"TX")) o.push("the trailer stay should close when the trailer leaves");
+        const s = w.stays.find(x => x.trailer_id==="TX");
+        const appts = new Set(w.events.filter(e => e.stay_id===(s&&s.id) && e.appt_id).map(e => e.appt_id));
+        if (appts.size < 2) o.push("the stay should span two appointments");
+        const cu = w.custody.filter(c => c.trailer_id==="TX");
+        if (cu.length < 3) o.push("there should be three custody spans");
+        return o; },
+      false,{v:"V2",t:"TX"})
+  ]
+},
+{
   id:"X1", group:"Exception branches", name:"LTL partial receipt", sub:"stress tests 5 and 6",
   ref:"model §2.5 · flows §11",
   dek:"Five inbound shipments, three consigned here and two continuing onward. Three come off; the trailer departs with two still aboard and is authorized without discrepancy — but only because the residual list says so. Remove a third from the session and watch authorization break.",
@@ -2698,7 +2968,7 @@ const SCENARIOS = [
      ["SHP-7004","Nogales — onward"],["SHP-7005","Nogales — onward"]]
       .forEach(([id,c]) => mkShipment(w,{id, direction:"INBOUND", consignee:c}));
     const t = mkTrailer(w,{id:"T4", number:"48219", carrier:"SWIFT"});
-    t.position="DOCK"; t.dock="27"; t.stay={dock:"27",opened_at:w.clock}; t.first_visit=false;
+    t.position="DOCK"; t.dock="27"; openDockStay(w,t); t.first_visit=false;
     w.docks["27"].state="OCCUPIED"; w.docks["27"].holder="T4"; w.docks["27"].sensor="OCCUPIED";
     ["SHP-7001","SHP-7002","SHP-7003","SHP-7004","SHP-7005"]
       .forEach(id => { mkLoad(w,id,"T4","ON_BOARD"); w.shipments[id].status="ARRIVED"; });
@@ -2708,7 +2978,7 @@ const SCENARIOS = [
         ["SHP-7001","SHP-7002","SHP-7003","SHP-7004","SHP-7005"]},
         {kind:"TAKE", trailer_id:"T4", expected_shipment_ids:[],
          expected_residual_shipment_ids:[]}]});
-    w.trailers.T4.tractor = true;
+    openCustody(w,"T4","ROAD_TRACTOR",{kind:"LEG",id:"BRING leg of V1"},w.visits.V1.driver,w.visits.V1.tractor);
     w.focusVisit="V1"; w.focusTrailer="T4";
   },
   script:[
@@ -2735,7 +3005,7 @@ const SCENARIOS = [
     [["SHP-8001","Kroger 412"],["SHP-8002","HEB 88"],["SHP-8003","Publix 7"],["SHP-8004","Aldi 55"]]
       .forEach(([id,c]) => mkShipment(w,{id, direction:"OUTBOUND", consignee:c}));
     const t = mkTrailer(w,{id:"T5", number:"53108", carrier:"ESTES"});
-    t.position="DOCK"; t.dock="25"; t.stay={dock:"25",opened_at:w.clock};
+    t.position="DOCK"; t.dock="25"; openDockStay(w,t);
     t.empty_verification="VERIFIED_EMPTY"; t.first_visit=false;
     w.docks["25"].state="OCCUPIED"; w.docks["25"].holder="T5"; w.docks["25"].sensor="OCCUPIED";
     ["SHP-8001","SHP-8002","SHP-8003","SHP-8004"].forEach(id => {
@@ -2745,7 +3015,7 @@ const SCENARIOS = [
       legs:[{kind:"BRING", trailer_id:"T5", expected_shipment_ids:[]},
             {kind:"TAKE", trailer_id:"T5",
              expected_shipment_ids:["SHP-8001","SHP-8002","SHP-8003","SHP-8004"]}]});
-    w.trailers.T5.tractor = true;
+    openCustody(w,"T5","ROAD_TRACTOR",{kind:"LEG",id:"BRING leg of V1"},w.visits.V1.driver,w.visits.V1.tractor);
     w.role="SUPERVISOR"; w.focusVisit="V1"; w.focusTrailer="T5";
   },
   script:[
@@ -2815,7 +3085,7 @@ const SCENARIOS = [
     baseYard(w);
     mkShipment(w,{id:"SHP-1101", direction:"OUTBOUND", consignee:"Kroger 412"});
     const t = mkTrailer(w,{id:"T6", number:"53201", carrier:"ESTES"});
-    t.position="DOCK"; t.dock="29"; t.stay={dock:"29",opened_at:w.clock-120};
+    t.position="DOCK"; t.dock="29"; openDockStay(w,t);
     t.empty_verification="VERIFIED_EMPTY"; t.first_visit=false;
     w.docks["29"].state="OCCUPIED"; w.docks["29"].holder="T6"; w.docks["29"].sensor="OCCUPIED";
     w.clock += 120;
@@ -2855,7 +3125,7 @@ const SCENARIOS = [
     baseYard(w);
     mkShipment(w,{id:"SHP-1301", direction:"INBOUND", consignee:"This facility"});
     const t = mkTrailer(w,{id:"T4", number:"48219", carrier:"SWIFT"});
-    t.position="DOCK"; t.dock="27"; t.stay={dock:"27",opened_at:w.clock}; t.first_visit=false;
+    t.position="DOCK"; t.dock="27"; openDockStay(w,t); t.first_visit=false;
     w.docks["27"].state="OCCUPIED"; w.docks["27"].holder="T4"; w.docks["27"].sensor="OCCUPIED";
     mkLoad(w,"SHP-1301","T4","ON_BOARD"); w.shipments["SHP-1301"].status="ARRIVED";
     w.focusTrailer="T4";
@@ -2906,7 +3176,7 @@ const SCENARIOS = [
     baseYard(w);
     mkShipment(w,{id:"SHP-1501", direction:"OUTBOUND", consignee:"Publix 7"});
     const t = mkTrailer(w,{id:"T5", number:"53108", carrier:"ESTES"});
-    t.position="DOCK"; t.dock="25"; t.stay={dock:"25",opened_at:w.clock};
+    t.position="DOCK"; t.dock="25"; openDockStay(w,t);
     t.empty_verification="VERIFIED_EMPTY"; t.first_visit=false;
     w.docks["25"].state="OCCUPIED"; w.docks["25"].holder="T5"; w.docks["25"].sensor="OCCUPIED";
     mkLoad(w,"SHP-1501","T5","ASSIGNED"); w.shipments["SHP-1501"].status="ASSIGNED";
@@ -2914,7 +3184,7 @@ const SCENARIOS = [
       dockpass:"53119", dockpass_consumed:true, on_site_since:w.clock-45,
       legs:[{kind:"BRING", trailer_id:"T5", expected_shipment_ids:[]},
             {kind:"TAKE", trailer_id:"T5", expected_shipment_ids:["SHP-1501"]}]});
-    w.trailers.T5.tractor = true;
+    openCustody(w,"T5","ROAD_TRACTOR",{kind:"LEG",id:"BRING leg of V1"},w.visits.V1.driver,w.visits.V1.tractor);
     w.focusVisit="V1"; w.focusTrailer="T5";
   },
   script:[
@@ -2971,7 +3241,10 @@ const SEEDED = [
  refs:"model §5.4 · model §5.1 · model §9 #6 · model §9 #37 · flows §4"},
 {id:"F12", sev:"contradiction", title:"TRACTOR_ATTACHED is classified as derived, but nothing can derive it",
  body:"Model §6.1 and glossary §7 both put <span class=\"id\">TRACTOR_ATTACHED</span> in the derived-flags table, under the heading “<b>computed, never stored</b>”. It cannot be. There is no other fact in the model a tractor's presence could be computed from — it is a primitive observation, and the bench had to store it on the trailer. Worse, §5 assigns it only twice: HOOK_TRAILER attaches (TAKE legs only) and DROP_TRAILER detaches. Neither covers <i>arrival</i>. A trailer driven in on a BRING leg is hooked from the moment it reaches the gate — §3.5 says so in prose, “a drop-load trailer has a driver until it is dropped” — but BIND_TRAILER_TO_LEG and ADMIT both list effects and neither mentions it.<br><br>This is not academic: the bench got it wrong in exactly that gap, and the result was live loads generating move tasks for the yard team, which is the single outcome §3.5 exists to prevent.<br><br><b>The better answer, now written up as model §10.12:</b> the flag <i>is</i> derivable — from an open <b>custody span</b> held by a road tractor — so the derived-flags table was never wrong, it was only missing the substrate. Custody belongs to the leg for a driver and to the move task for a spotter, carries who and what, and gives the history the thing it is actually asked: not “was a tractor attached” but “who had this trailer, and when”. The stored boolean applied in v0.21 stops the bug and should be read as a stopgap. Note the trap in the fuller model: a road tractor holding the trailer suppresses move-task creation, while a yard truck holding it <i>is</i> the move — so any rule testing “is custody open” rather than “open to a road tractor” reintroduces this same bug one level up.",
- refs:"model §6.1 · model §3.5 · model §5.1 · model §5.2 · glossary §7 · stress tests 1-vi, 12"}
+ refs:"model §6.1 · model §3.5 · model §5.1 · model §5.2 · glossary §7 · stress tests 1-vi, 12"},
+{id:"F13", sev:"gap", title:"A trailer stay defined as “gate-in to gate-out” cannot describe a company return",
+ body:"Found by implementing §10.12 rather than by reading it — so this one is against text written in this round, not against the original set. §10.12 defines <span class=\"id\">TrailerStay</span> as “one continuous occupancy of the facility by one trailer, <b>gate-in to gate-out</b>”. Pattern 9 never crosses the gate: a company driver parks in an <i>outside</i> lot and goes home, and the trailer may sit there for a day before a yard check finds it. Under the literal definition no stay ever opens, so its dwell is invisible and the readiness work that follows falls inside no bracket at all.<br><br>The bench opens the stay on first occupancy of <i>any</i> facility position and flags it when that happened outside the fence — run flow 7 and read the log. That is a guess, and the underlying question is §10.11's: <span class=\"id\">AT_FACILITY</span> covers both the gate lane and the outside lot, and those two want different answers here. Decide whether dwell starts at the perimeter or at the fence, because it changes what every yard-occupancy number means.",
+ refs:"model §10.12 · model §10.11 · model §3.6.2 · flows §9 · stress test 1-xv"}
 ];
 const SEV = {
   blocks:{l:"Blocks a flow", t:"r"}, contradiction:{l:"Documents disagree", t:"r"},
@@ -3142,9 +3415,22 @@ function renderObjects(){
         dimRow("Empty verification", idt(t.empty_verification)) +
         dimRow("Identity", idt(t.identity_confidence),
           camerasLive(w) ? "" : "no cameras — near-match warning is the only soft control") +
-        dimRow("Tractor", t.tractor
-          ? '<span class="bdg">attached</span> <span class="why">needs a destination, not a task</span>'
-          : '<span class="bdg m">none</span> <span class="why">movement is a task</span>') +
+        dimRow("Custody", (function(){
+          const cu = custodyOpen(w,t.id);
+          if (!cu) return '<span class="bdg m">nobody</span> <span class="why">no open span — '+
+            'movement is a task for the yard team</span>';
+          const road = cu.holder_type==="ROAD_TRACTOR";
+          return '<span class="bdg '+(road?"":"b")+'">'+(road?"road tractor":"yard truck")+
+            '</span> '+esc(cu.driver)+' · '+idt(cu.unit)+
+            '<span class="why">'+idt(cu.id)+' open since '+hhmm(cu.started_at)+' · from '+
+            esc(cu.source.id||cu.source.kind)+' · '+
+            (road ? "suppresses move-task creation" : "<b>is</b> the move in progress")+'</span>';
+        })()) +
+        (w.custody.filter(x => x.trailer_id===t.id && x.ended_at!=null).length
+          ? dimRow("Past custody", w.custody.filter(x => x.trailer_id===t.id && x.ended_at!=null)
+              .map(x => idt(x.id)+' <span class="why" style="display:inline">'+esc(x.driver)+
+                ' · '+hhmm(x.started_at)+"–"+hhmm(x.ended_at)+' ('+
+                (x.ended_at-x.started_at)+' min)</span>').join("<br>")) : "") +
         (rows.length ? dimRow("Rows", rows.map(r =>
           idt(r.shipment_id)+" <span class=\"why\" style=\"display:inline\">"+
           r.direction.toLowerCase()+" · "+r.link_state+" · "+
@@ -3317,10 +3603,153 @@ function renderFindings(){
       'Here in the file they live only for this session.</p></div>');
 }
 
+/* ---- history: four bracketings ---------------------------------------- */
+let BRACKET = "stay";
+const BRACKETS = [
+  {k:"stay", n:"Trailer stay", key:"stay_id",      cls:"stay",
+   d:"Gate-in to gate-out. One trailer may have several over its life, and one stay may cover several appointments."},
+  {k:"appt", n:"Appointment",  key:"appt_id",      cls:"appt",
+   d:"A driver visit, scheduled window to DEPARTED. A drop-and-hook appointment touches two trailers, so it spans two stays."},
+  {k:"dock", n:"Dock stay",    key:"dock_stay_id", cls:"dock",
+   d:"Spot-in to pull-out, containing one or more sessions. Several can occur within one trailer stay."},
+  {k:"cust", n:"Custody",      key:"custody_id",   cls:"cust",
+   d:"Hook to drop. The bracketing that answers who had the trailer at a given minute — road tractor or yard truck."}
+];
+
+function allSpans(w){
+  const T = id => w.trailers[id] ? w.trailers[id].number : id;
+  return {
+    stay: w.stays.map(s => ({id:s.id, cls:"stay", a:s.opened_at, b:s.closed_at,
+      label:T(s.trailer_id), meta:(s.legs.length ? s.legs.join(" · ") : "no leg yet")})),
+    appt: Object.values(w.visits).map(v => ({id:v.id, cls:"appt",
+      a:(v.arrived_at!=null ? v.arrived_at : v.window[0]), b:v.departed_at,
+      label:v.driver, meta:v.visit_type+" · "+v.legs.length+" leg"+(v.legs.length===1?"":"s")})),
+    dock: w.dockStays.map(d => ({id:d.id, cls:"dock", a:d.spotted_at, b:d.pulled_at,
+      label:"Dock "+d.dock+" · "+T(d.trailer_id), meta:"1..n sessions"})),
+    cust: w.custody.map(c => ({id:c.id, cls:"cust"+(c.holder_type==="YARD_TRUCK"?" yard":""),
+      a:c.started_at, b:c.ended_at, label:c.driver+" · "+c.unit,
+      meta:T(c.trailer_id)+" · "+c.holder_type.toLowerCase().replace("_"," ")+" · from "+
+        (c.source.id||c.source.kind)}))
+  };
+}
+
+/* greedy row packing so overlapping spans stay readable */
+function packRows(list){
+  const rows = [];
+  list.slice().sort((x,y) => x.a-y.a).forEach(s => {
+    let r = rows.find(row => row.every(o => (s.b==null?1e9:s.b) <= o.a || s.a >= (o.b==null?1e9:o.b)));
+    if (!r){ r = []; rows.push(r); }
+    r.push(s);
+  });
+  return rows;
+}
+
+function nestingFacts(w){
+  const out = [];
+  Object.values(w.visits).forEach(v => {
+    const ids = new Set(w.events.filter(e => e.appt_id===v.id && e.stay_id).map(e => e.stay_id));
+    if (ids.size>1) out.push("Appointment <b>"+v.id+"</b> spans <b>"+ids.size+
+      "</b> trailer stays — so the appointment is not inside the stay.");
+  });
+  w.stays.forEach(s => {
+    const ids = new Set(w.events.filter(e => e.stay_id===s.id && e.appt_id).map(e => e.appt_id));
+    if (ids.size>1) out.push("Trailer stay <b>"+s.id+"</b> ("+
+      (w.trailers[s.trailer_id]||{}).number+") spans <b>"+ids.size+
+      "</b> appointments — so the stay is not inside the appointment either.");
+  });
+  w.stays.forEach(s => {
+    const ds = w.dockStays.filter(d => d.trailer_id===s.trailer_id &&
+      d.spotted_at>=s.opened_at && (s.closed_at==null || d.spotted_at<=s.closed_at));
+    if (ds.length>1) out.push("Trailer stay <b>"+s.id+"</b> contains <b>"+ds.length+
+      "</b> dock stays.");
+  });
+  const orphanMoves = w.events.filter(e => !e.appt_id && e.stay_id).length;
+  if (orphanMoves) out.push("<b>"+orphanMoves+"</b> event"+(orphanMoves===1?"":"s")+
+    " fall inside a trailer stay but inside <i>no</i> appointment — the work that happens "+
+    "after the driver has gone home.");
+  return out;
+}
+
+function renderHistory(){
+  const w = W;
+  $("#brackets").innerHTML = BRACKETS.map(b =>
+    '<button type="button" data-brk="'+b.k+'" aria-pressed="'+(BRACKET===b.k)+'">'+
+    esc(b.n)+'</button>').join("");
+  const S = allSpans(w);
+  const sel = BRACKETS.find(b => b.k===BRACKET);
+  const every = [].concat(S.stay,S.appt,S.dock,S.cust);
+  if (!every.length && !w.events.length){
+    $("#histbody").innerHTML = '<p class="hidnote">Nothing has happened yet. '+
+      'Work a scenario and the four brackets fill in.</p>';
+    return;
+  }
+  const t0 = Math.min.apply(null, every.map(s => s.a).concat(w.events.map(e => e.at), [w.clock]));
+  const t1 = Math.max(w.clock, Math.max.apply(null,
+    every.map(s => s.b==null ? w.clock : s.b).concat([t0+30])));
+  const span = Math.max(1, t1-t0);
+  const posOf = s => {
+    const a = s.a, b = (s.b==null ? w.clock : s.b);
+    return {l:(a-t0)/span*100, wd:Math.max(0.6,(b-a)/span*100), live:s.b==null};
+  };
+
+  const lanes = BRACKETS.map(b => {
+    const rows = packRows(S[b.k]);
+    return '<div class="tlane'+(b.k===BRACKET?" on":"")+'"><span class="ln">'+esc(b.n)+
+      '</span><div class="trk">' +
+      (rows.length ? rows.map(row => '<div class="trow">' + row.map(s => {
+        const p = posOf(s);
+        return '<span class="bar '+s.cls+(p.live?" live":"")+'" style="left:'+p.l.toFixed(2)+
+          '%;width:'+p.wd.toFixed(2)+'%" title="'+esc(s.id+" · "+s.label+" · "+s.meta+" · "+
+          hhmm(s.a)+"–"+(s.b==null?"open":hhmm(s.b)))+'">'+esc(s.label)+'</span>';
+      }).join("") + '</div>').join("")
+        : '<div class="trow"></div>') +
+      '</div></div>';
+  }).join("");
+
+  const facts = nestingFacts(w);
+  const key = sel.key;
+  const groups = [];
+  S[BRACKET].forEach(s => {
+    const evs = w.events.filter(e => e[key]===s.id);
+    groups.push({s, evs});
+  });
+  const orphans = w.events.filter(e => !e[key]);
+
+  const groupHtml = groups.filter(g => g.evs.length).map(g =>
+    '<div class="brk"><h4>'+idt(g.s.id)+' '+esc(g.s.label)+
+      '<span style="font-weight:400;color:var(--steel)">'+esc(g.s.meta)+'</span>'+
+      '<span class="sp">'+hhmm(g.s.a)+" – "+(g.s.b==null
+        ? "open · "+(w.clock-g.s.a)+" min so far"
+        : hhmm(g.s.b)+" · "+(g.s.b-g.s.a)+" min")+'</span></h4>' +
+    g.evs.map(e => '<div class="hev'+(e.kind==="dev"?" dev":"")+'"><span class="tm">'+
+      hhmm(e.at)+'</span><span class="who">'+esc(e.actor)+'</span><span class="bo">'+
+      e.body+'</span></div>').join("") + '</div>').join("");
+
+  const orphanHtml = orphans.length
+    ? '<div class="brk orphan"><h4>Inside no '+esc(sel.n.toLowerCase())+
+      '<span class="sp">'+orphans.length+' event'+(orphans.length===1?"":"s")+'</span></h4>' +
+      orphans.map(e => '<div class="hev'+(e.kind==="dev"?" dev":"")+'"><span class="tm">'+
+        hhmm(e.at)+'</span><span class="who">'+esc(e.actor)+'</span><span class="bo">'+
+        e.body+'</span></div>').join("") + '</div>'
+    : "";
+
+  $("#histbody").innerHTML =
+    '<div class="tl">'+lanes+'</div>' +
+    '<div class="axis"><span></span><span class="ax"><span>'+hhmm(t0)+
+      '</span><span>'+hhmm(t1)+'</span></span></div>' +
+    '<p class="hidnote">'+esc(sel.d)+'</p>' +
+    (facts.length
+      ? '<div class="note"><b>Read off the spans above, not asserted:</b><br>'+
+        facts.join("<br>")+'</div>'
+      : '<p class="hidnote">No overlap worth noting yet. The clearest demonstration is '+
+        '“One stay, two appointments”, or flow 5.</p>') +
+    '<div class="brks">'+(groupHtml||'')+orphanHtml+'</div>';
+}
+
 /* ---- full render ------------------------------------------------------- */
 function render(){
   renderRail(); renderSpine(); renderObjects(); renderActions(); renderSteps(); renderLog();
-  renderFindings();
+  renderHistory(); renderFindings();
   $("#scenname").textContent = SCEN ? SCEN.name : "Scenario";
   $("#scenref").textContent  = SCEN ? SCEN.ref : "";
   $("#scendek").textContent  = SCEN ? SCEN.dek : "";
@@ -3344,6 +3773,8 @@ function loadScenario(id, keepConfig){
   SCEN = s; CURSOR = 0; DEVIATIONS = [];
   s._results = [];
   s.seed(W);
+  syncStays(W);
+  applyStepFocus();
   if (!W.role) W.role = "CLERK";
   buildRoleSelect();
   log("sys","Scenario <b>"+esc(s.name)+"</b> seeded. "+esc(s.ref)+".");
@@ -3443,7 +3874,11 @@ function commit(id, vals){
       "names another party's freight. Switch role to Supervisor to continue (§5.1).");
     render(); return;
   }
+  ACTOR = a.actor && a.actor!=="—" ? a.actor
+    : (ROLES.find(r => r.id===W.role)||{}).label || "system";
   a.apply(W, c, vals||{});
+  syncStays(W);
+  ACTOR = "system";
   W.clock += 3;
   afterAction(id);
   render();
@@ -3456,6 +3891,7 @@ function afterAction(id){
     const issues = cur.check ? (cur.check(W)||[]) : [];
     SCEN._results[CURSOR] = {status: issues.length ? "fail" : "pass", issues};
     CURSOR++;
+    applyStepFocus();
     /* skip past any step the document expects to be blocked and now is not needed */
     return;
   }
@@ -3475,12 +3911,14 @@ function confirmBlocked(){
     ? "Confirmed refused: <b>"+cur.do+"</b> — "+esc(res.why||"")+" ("+res.t+")."
     : "<b>"+cur.do+"</b> should have been refused here and was not.");
   CURSOR++;
+  applyStepFocus();
   render();
 }
 function skipStep(){
   if (!currentStep()) return;
   SCEN._results[CURSOR] = {status:"fail", issues:["skipped"]};
   CURSOR++;
+  applyStepFocus();
   render();
 }
 
@@ -3549,6 +3987,8 @@ document.addEventListener("click", e => {
   if (ft){ W.focusTrailer = ft.dataset.focust; W.focusVisit = null; render(); return; }
   const fv = e.target.closest("[data-focusv]");
   if (fv){ W.focusVisit = fv.dataset.focusv; W.focusTrailer = null; render(); return; }
+  const bk = e.target.closest("[data-brk]");
+  if (bk){ BRACKET = bk.dataset.brk; renderHistory(); return; }
   const vd = e.target.closest("[data-verdict]");
   if (vd){ setVerdict(vd.dataset.fid, vd.dataset.verdict); return; }
   if (e.target.id==="fadd"){ addFinding(); return; }
@@ -3609,7 +4049,7 @@ loadScenario("F1", false);
 
 /* Script controls live under the Script header once a scenario is loaded. */
 (function addScriptControls(){
-  const hdr = document.querySelector(".stage .panel:last-of-type > header");
+  const hdr = document.querySelector("#scriptpanel > header");
   if (!hdr) return;
   const wrap = document.createElement("span");
   wrap.innerHTML = '<button class="mini" id="btn-blocked" type="button">Confirm refused</button> ' +
