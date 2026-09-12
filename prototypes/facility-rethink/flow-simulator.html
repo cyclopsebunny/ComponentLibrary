@@ -1,0 +1,3603 @@
+<title>Yard Flow Bench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+/* ===========================================================================
+   Yard Flow Bench — an instrument for walking the yard & dock operations
+   document set against itself.
+
+   Palette is drawn from the yard rather than from the product: steel-biased
+   neutrals, dock navy for controls, one safety yellow spent only on the step
+   you are standing on. Deliberately NOT the myQ azure of the shipped console,
+   so nobody mistakes this for a UX proposal.
+
+   Typography carries glossary §1.1's distinction as a rule rather than a note:
+   IBM Plex Mono is ALWAYS an internal identifier (AWAITING_ASSIGNMENT);
+   Archivo is ALWAYS a displayed label ("Awaiting Dock"). If a string is set
+   in the wrong face, that is a bug in the copy, not the CSS.
+   ======================================================================== */
+:root{
+  --ground:#FFFFFF;
+  --surface:#F1F4F7;
+  --surface-2:#E5EBF0;
+  --surface-3:#D8E1E8;
+  --line:#C7D1DA;
+  --line-2:#A3B2BF;
+  --ink:#0F1419;
+  --ink-2:#38464F;
+  --steel:#66788A;
+  --mute:#8494A1;
+  --accent:#B58200;        /* safety yellow, darkened to carry on white */
+  --accent-bright:#E8B21C; /* the stripe itself */
+  --accent-bg:#FDF3D8;
+  --nav:#17384D;           /* dock navy */
+  --nav-hover:#0D2635;
+  --nav-ink:#FFFFFF;
+  --ok:#186B37;  --ok-bg:#E2F0E7;  --ok-line:#4E9A6C;
+  --warn:#7E4B00;--warn-bg:#FAEEDA;--warn-line:#C08A2E;
+  --bad:#9E2A12; --bad-bg:#F9E2DD; --bad-line:#C8654D;
+  --info:#0F5878;--info-bg:#DFEDF4;--info-line:#5C93AC;
+  --shadow:0 1px 2px rgba(15,20,25,.05), 0 10px 26px -16px rgba(15,20,25,.28);
+  --rail-l:266px;
+  --rail-r:312px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0E1419;
+    --surface:#161E26;
+    --surface-2:#1D2832;
+    --surface-3:#26333F;
+    --line:#2B3945;
+    --line-2:#41525F;
+    --ink:#E8EFF4;
+    --ink-2:#C2CFD9;
+    --steel:#90A3B2;
+    --mute:#77899A;
+    --accent:#F0BE2E;
+    --accent-bright:#F5C400;
+    --accent-bg:#2E2205;
+    --nav:#BBD8EC;
+    --nav-hover:#D6E9F6;
+    --nav-ink:#0B1318;
+    --ok:#74CE97;  --ok-bg:#11301F;  --ok-line:#2F6B47;
+    --warn:#EEC078;--warn-bg:#32220A;--warn-line:#7B571B;
+    --bad:#F09C85; --bad-bg:#361711; --bad-line:#7E3827;
+    --info:#8EC6E2;--info-bg:#102835;--info-line:#33627C;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 30px -18px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0E1419;
+  --surface:#161E26;
+  --surface-2:#1D2832;
+  --surface-3:#26333F;
+  --line:#2B3945;
+  --line-2:#41525F;
+  --ink:#E8EFF4;
+  --ink-2:#C2CFD9;
+  --steel:#90A3B2;
+  --mute:#77899A;
+  --accent:#F0BE2E;
+  --accent-bright:#F5C400;
+  --accent-bg:#2E2205;
+  --nav:#BBD8EC;
+  --nav-hover:#D6E9F6;
+  --nav-ink:#0B1318;
+  --ok:#74CE97;  --ok-bg:#11301F;  --ok-line:#2F6B47;
+  --warn:#EEC078;--warn-bg:#32220A;--warn-line:#7B571B;
+  --bad:#F09C85; --bad-bg:#361711; --bad-line:#7E3827;
+  --info:#8EC6E2;--info-bg:#102835;--info-line:#33627C;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 30px -18px rgba(0,0,0,.7);
+}
+
+*,*::before,*::after{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:Archivo,system-ui,-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;
+  font-size:14px; line-height:1.5; -webkit-text-size-adjust:100%;
+}
+/* Identifiers. Never a displayed label. */
+.id{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-variant-numeric:tabular-nums; letter-spacing:-.01em}
+h1,h2,h3{margin:0; text-wrap:balance; letter-spacing:-.015em}
+p{margin:0}
+button{font-family:inherit; font-size:inherit; color:inherit}
+:where(button,select,input,a,[tabindex]):focus-visible{
+  outline:2px solid var(--accent-bright); outline-offset:2px; border-radius:3px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important; animation:none!important}}
+
+/* ---- masthead ---------------------------------------------------------- */
+.top{
+  display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+  padding:12px 20px; background:var(--surface); border-bottom:1px solid var(--line);
+}
+.brand{display:flex; flex-direction:column; gap:1px; margin-right:auto; min-width:0}
+.brand b{font-size:16px; font-weight:700; letter-spacing:-.02em}
+.brand span{font-size:11.5px; color:var(--steel)}
+.topctl{display:flex; align-items:center; gap:7px; flex-wrap:wrap}
+.topctl label{font-size:10.5px; font-weight:600; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--mute)}
+select,input[type=text]{
+  appearance:none; background:var(--ground); color:var(--ink);
+  border:1px solid var(--line-2); border-radius:4px; padding:5px 9px; font-size:13px;
+  font-family:inherit; max-width:100%;
+}
+select{padding-right:22px;
+  background-image:linear-gradient(45deg,transparent 48%,currentColor 48% 52%,transparent 52%),
+    linear-gradient(-45deg,transparent 48%,currentColor 48% 52%,transparent 52%);
+  background-size:5px 5px,5px 5px; background-position:right 11px center,right 7px center;
+  background-repeat:no-repeat}
+
+/* ---- shell ------------------------------------------------------------- */
+.shell{display:grid; grid-template-columns:var(--rail-l) minmax(0,1fr) var(--rail-r);
+  align-items:start; min-height:calc(100vh - 54px)}
+.rail{border-right:1px solid var(--line); background:var(--surface);
+  padding:0 0 24px; min-width:0}
+.rail.r{border-right:0; border-left:1px solid var(--line)}
+.stage{min-width:0; padding:18px 22px 40px; display:flex; flex-direction:column; gap:16px}
+@media (min-width:1100px){
+  .shell{height:calc(100vh - 54px); overflow:hidden}
+  .rail,.stage{height:100%; overflow-y:auto; scrollbar-width:thin}
+}
+@media (max-width:1099px){
+  .shell{display:flex; flex-direction:column; height:auto}
+  .rail,.rail.r{border:0; border-bottom:1px solid var(--line); width:100%}
+  .stage{padding:16px}
+}
+
+/* ---- rail furniture ---------------------------------------------------- */
+.grp{padding:14px 14px 6px; font-size:10.5px; font-weight:600; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--mute); display:flex; align-items:baseline; gap:7px}
+.grp i{flex:1; height:1px; background:var(--line); font-style:normal}
+.scen{display:block; width:100%; text-align:left; background:none; border:0;
+  border-left:3px solid transparent; padding:7px 14px 8px 11px; cursor:pointer}
+.scen:hover{background:var(--surface-2)}
+.scen[aria-current="true"]{background:var(--ground); border-left-color:var(--accent-bright)}
+.scen .nm{font-size:13px; font-weight:600; display:block; line-height:1.3}
+.scen .sb{font-size:11px; color:var(--steel); display:block; margin-top:1px}
+.scen[aria-current="true"] .nm{color:var(--ink)}
+
+/* ---- panels ------------------------------------------------------------ */
+.panel{border:1px solid var(--line); border-radius:6px; background:var(--ground);
+  display:flex; flex-direction:column; min-width:0}
+.panel>header{display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  padding:9px 13px; border-bottom:1px solid var(--line); background:var(--surface)}
+.panel>header h2{font-size:10.5px; font-weight:600; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--steel); margin-right:auto}
+.panel>.bd{padding:13px; display:flex; flex-direction:column; gap:12px; min-width:0}
+.panel.flat{border-radius:6px; box-shadow:var(--shadow)}
+
+/* ---- the six-phase spine ---------------------------------------------- */
+.spine{display:flex; align-items:stretch; gap:3px; overflow-x:auto; padding:2px}
+.ph{flex:1 1 0; min-width:76px; border:1px solid var(--line); border-radius:4px;
+  background:var(--surface); padding:6px 7px 7px; display:flex; flex-direction:column; gap:2px}
+.ph .k{font-size:9.5px; font-weight:600; letter-spacing:.06em; color:var(--mute)}
+.ph .q{font-size:11px; line-height:1.28; color:var(--steel)}
+.ph.used{background:var(--ground); border-color:var(--line-2)}
+.ph.used .q{color:var(--ink-2)}
+.ph.done{background:var(--ok-bg); border-color:var(--ok-line)}
+.ph.done .k{color:var(--ok)}
+.ph.now{background:var(--accent-bg); border-color:var(--accent-bright); border-width:2px;
+  padding:6px 8px 7px}
+.ph.now .k{color:var(--accent)}
+.ph.skip{opacity:.42}
+.ph.skip .q{text-decoration:line-through; text-decoration-thickness:1px}
+
+/* ---- object cards (trailer / visit) ------------------------------------ */
+.objs{display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(288px,1fr))}
+.obj{border:1px solid var(--line); border-radius:6px; background:var(--ground);
+  display:flex; flex-direction:column; min-width:0}
+.obj.focus{border-color:var(--nav); box-shadow:inset 0 0 0 1px var(--nav)}
+.obj>h3{display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;
+  padding:9px 12px 8px; border-bottom:1px solid var(--line); background:var(--surface-2)}
+.obj>h3 .n{font-size:14.5px; font-weight:700}
+.obj>h3 .c{font-size:11px; color:var(--steel); margin-right:auto}
+.obj>h3 button{background:none; border:1px solid var(--line-2); border-radius:3px;
+  font-size:10px; font-weight:600; letter-spacing:.06em; text-transform:uppercase;
+  padding:2px 6px; cursor:pointer; color:var(--steel)}
+.obj>h3 button:hover{border-color:var(--nav); color:var(--nav)}
+.display{padding:8px 12px; border-bottom:1px solid var(--line); background:var(--ground)}
+.display .lbl{font-size:10px; font-weight:600; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--mute)}
+.display .val{font-size:16px; font-weight:600; letter-spacing:-.015em}
+.dims{display:grid; gap:0; padding:0}
+.dim{display:grid; grid-template-columns:104px minmax(0,1fr); gap:8px; align-items:baseline;
+  padding:5px 12px; border-bottom:1px solid var(--surface-2)}
+.dim:last-child{border-bottom:0}
+.dim .d{font-size:10.5px; font-weight:600; letter-spacing:.04em; text-transform:uppercase;
+  color:var(--mute)}
+.dim .v{font-size:12px; overflow-wrap:anywhere}
+.dim.collapsed{display:none}
+.dim .why{font-size:10.5px; color:var(--mute); display:block}
+
+/* ---- badges ------------------------------------------------------------ */
+.bdg{display:inline-flex; align-items:center; gap:4px; padding:1px 6px; border-radius:3px;
+  font-size:11px; font-weight:600; border:1px solid var(--line-2); background:var(--surface);
+  color:var(--ink-2); white-space:nowrap}
+.bdg.g{color:var(--ok); border-color:var(--ok-line); background:var(--ok-bg)}
+.bdg.a{color:var(--warn); border-color:var(--warn-line); background:var(--warn-bg)}
+.bdg.r{color:var(--bad); border-color:var(--bad-line); background:var(--bad-bg)}
+.bdg.b{color:var(--info); border-color:var(--info-line); background:var(--info-bg)}
+.bdg.m{color:var(--mute)}
+.flags{display:flex; flex-wrap:wrap; gap:4px; padding:9px 12px; border-top:1px solid var(--line);
+  background:var(--surface)}
+.flags:empty{display:none}
+.flags .none{font-size:11.5px; color:var(--mute)}
+
+/* ---- action console ---------------------------------------------------- */
+.tier{display:flex; flex-direction:column; gap:6px}
+.tier>.t{font-size:10px; font-weight:600; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--mute); display:flex; align-items:center; gap:7px}
+.tier>.t i{flex:1; height:1px; background:var(--line); font-style:normal}
+.acts{display:flex; flex-wrap:wrap; gap:7px}
+.act{display:inline-flex; flex-direction:column; gap:1px; align-items:flex-start;
+  border:1px solid var(--line-2); border-radius:4px; background:var(--ground);
+  padding:6px 11px; cursor:pointer; text-align:left; max-width:100%}
+.act .an{font-size:12px; font-weight:600}
+.act .aw{font-size:10.5px; color:var(--steel); overflow-wrap:anywhere}
+.act:hover{border-color:var(--nav)}
+.act.p{background:var(--nav); border-color:var(--nav); color:var(--nav-ink)}
+.act.p:hover{background:var(--nav-hover)}
+.act.p .aw{color:var(--nav-ink); opacity:.78}
+.act.d{cursor:not-allowed; background:var(--warn-bg); border-color:var(--warn-line);
+  border-style:dashed; color:var(--warn)}
+.act.d:hover{border-color:var(--warn-line)}
+.act.h{cursor:default; background:var(--surface); border-style:dotted; color:var(--mute)}
+.act.sup{border-color:var(--bad-line); color:var(--bad); background:var(--bad-bg)}
+.act.next{box-shadow:0 0 0 2px var(--accent-bright)}
+.supwrap{border:1px dashed var(--bad-line); border-radius:4px; padding:9px 11px;
+  background:var(--bad-bg); display:flex; flex-direction:column; gap:6px}
+.supwrap .note{font-size:11px; color:var(--bad)}
+.hidnote{font-size:11.5px; color:var(--mute)}
+
+/* ---- script ------------------------------------------------------------ */
+.steps{display:flex; flex-direction:column}
+.step{display:grid; grid-template-columns:52px minmax(0,1fr) auto; gap:10px;
+  padding:8px 13px; border-bottom:1px solid var(--surface-2); align-items:baseline}
+.step:last-child{border-bottom:0}
+.step .sid{font-size:11px; font-weight:600; color:var(--mute)}
+.step .sy{font-size:12.5px; line-height:1.4}
+.step .sy .who{color:var(--steel); font-size:11px}
+.step .sy .ref{font-size:10.5px; color:var(--mute)}
+.step .mk{font-size:11px; font-weight:600; white-space:nowrap}
+.step.now{background:var(--accent-bg); box-shadow:inset 3px 0 0 var(--accent-bright)}
+.step.past{opacity:.62}
+.step.pass .mk{color:var(--ok)}
+.step.fail{background:var(--bad-bg)}
+.step.fail .mk{color:var(--bad)}
+
+/* ---- log + findings rail ---------------------------------------------- */
+.logl{display:flex; flex-direction:column; padding:0}
+.ev{display:grid; grid-template-columns:34px minmax(0,1fr); gap:8px; padding:6px 13px;
+  border-bottom:1px solid var(--surface-2); font-size:11.5px; align-items:baseline}
+.ev .tm{color:var(--mute); font-size:10.5px}
+.ev .bo{overflow-wrap:anywhere}
+.ev .bo b{font-weight:600}
+.ev.sys .bo{color:var(--steel)}
+.ev.dev{background:var(--warn-bg)}
+.find{border-bottom:1px solid var(--line); padding:10px 13px; display:flex;
+  flex-direction:column; gap:4px}
+.find .fh{display:flex; align-items:baseline; gap:7px}
+.find .fn{font-size:12.5px; font-weight:600; flex:1}
+.find .fb{font-size:11.5px; color:var(--ink-2); line-height:1.45}
+.find .fr{font-size:10.5px; color:var(--mute)}
+.find .fa{display:flex; gap:6px; margin-top:2px}
+.mini{background:none; border:1px solid var(--line-2); border-radius:3px; cursor:pointer;
+  font-size:10.5px; font-weight:600; padding:2px 7px; color:var(--steel)}
+.mini:hover{border-color:var(--nav); color:var(--nav)}
+.mini.on{background:var(--nav); border-color:var(--nav); color:var(--nav-ink)}
+textarea{width:100%; font-family:inherit; font-size:12.5px; padding:7px 9px;
+  border:1px solid var(--line-2); border-radius:4px; background:var(--ground); color:var(--ink);
+  resize:vertical; min-height:62px}
+
+/* ---- prompt sheet ------------------------------------------------------ */
+dialog{border:1px solid var(--line); border-radius:6px; background:var(--ground);
+  color:var(--ink); padding:0; width:min(460px,calc(100vw - 28px)); box-shadow:var(--shadow)}
+dialog::backdrop{background:rgba(8,14,19,.55)}
+dialog header{padding:11px 15px; border-bottom:1px solid var(--line); background:var(--surface)}
+dialog header h3{font-size:13.5px; font-weight:700}
+dialog header p{font-size:11.5px; color:var(--steel); margin-top:2px}
+dialog .fbd{padding:14px 15px; display:flex; flex-direction:column; gap:12px}
+dialog footer{padding:11px 15px; border-top:1px solid var(--line); display:flex;
+  justify-content:flex-end; gap:8px; background:var(--surface)}
+.fld{display:flex; flex-direction:column; gap:4px}
+.fld>span{font-size:11px; font-weight:600; letter-spacing:.04em; color:var(--steel)}
+.recon{display:flex; flex-direction:column; border:1px solid var(--line); border-radius:4px}
+.recon .rr{padding:8px 11px; border-bottom:1px solid var(--surface-2); display:flex;
+  flex-direction:column; gap:5px}
+.recon .rr:last-child{border-bottom:0}
+.recon .rn{font-size:12.5px; font-weight:600}
+.recon .ro{display:flex; flex-wrap:wrap; gap:5px}
+.ochip{display:inline-flex; align-items:center; gap:5px; border:1px solid var(--line-2);
+  border-radius:3px; padding:3px 8px; font-size:11.5px; cursor:pointer}
+.ochip input{margin:0; accent-color:var(--nav)}
+.ochip.sel{border-color:var(--nav); background:var(--surface-2)}
+.ochip.locked{opacity:.45; cursor:not-allowed}
+.btn{border:1px solid var(--nav); background:var(--ground); color:var(--nav); border-radius:4px;
+  padding:7px 14px; font-size:13px; font-weight:600; cursor:pointer}
+.btn:hover{background:var(--surface-2)}
+.btn.p{background:var(--nav); color:var(--nav-ink)}
+.btn.p:hover{background:var(--nav-hover)}
+.btn:disabled{opacity:.45; cursor:not-allowed}
+
+/* ---- config sheet ----------------------------------------------------- */
+.cfg{display:flex; flex-direction:column; gap:9px}
+.cfgrow{display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; align-items:center;
+  padding-bottom:8px; border-bottom:1px solid var(--surface-2)}
+.cfgrow:last-child{border-bottom:0}
+.cfgrow .ck{font-size:12px; font-weight:600}
+.cfgrow .cd{font-size:11px; color:var(--steel)}
+.sw{position:relative; width:36px; height:20px; flex:none}
+.sw input{position:absolute; inset:0; opacity:0; margin:0; cursor:pointer; width:100%; height:100%}
+.sw i{position:absolute; inset:0; border-radius:10px; background:var(--surface-3);
+  border:1px solid var(--line-2); transition:background .12s ease}
+.sw i::after{content:""; position:absolute; top:2px; left:2px; width:14px; height:14px;
+  border-radius:50%; background:var(--ground); transition:transform .12s ease}
+.sw input:checked+i{background:var(--nav); border-color:var(--nav)}
+.sw input:checked+i::after{transform:translateX(16px)}
+.sw input:focus-visible+i{outline:2px solid var(--accent-bright); outline-offset:2px}
+
+/* ---- notes / callouts -------------------------------------------------- */
+.note{border:1px solid var(--line); border-left:3px solid var(--accent-bright);
+  background:var(--surface); border-radius:4px; padding:9px 12px; font-size:12px;
+  line-height:1.5; color:var(--ink-2)}
+.note b{color:var(--ink)}
+.note.bad{border-left-color:var(--bad-line); background:var(--bad-bg)}
+.note.ok{border-left-color:var(--ok-line); background:var(--ok-bg)}
+.legend{display:flex; flex-wrap:wrap; gap:12px; font-size:11px; color:var(--steel)}
+.legend span{display:flex; align-items:center; gap:5px}
+.sw-k{width:20px; height:11px; border-radius:2px; border:1px solid var(--line-2);
+  display:inline-block}
+.tabs{display:flex; gap:2px}
+.tab{background:none; border:1px solid transparent; border-bottom:2px solid transparent;
+  padding:4px 9px; font-size:11.5px; font-weight:600; color:var(--steel); cursor:pointer}
+.tab[aria-selected="true"]{color:var(--ink); border-bottom-color:var(--nav)}
+.wide{overflow-x:auto}
+</style>
+
+<header class="top">
+  <span class="brand">
+    <b>Yard Flow Bench</b>
+    <span>Walks the yard &amp; dock document set against itself — model v0.20 · flows v0.4 · matrix v0.10 · glossary v0.4</span>
+  </span>
+  <span class="topctl">
+    <label for="role">Acting as</label>
+    <select id="role"></select>
+  </span>
+  <span class="topctl">
+    <button class="mini" id="cfgbtn" type="button">Facility config</button>
+    <button class="mini" id="hidbtn" type="button">Show hidden actions</button>
+    <button class="mini" id="resetbtn" type="button">Reset scenario</button>
+  </span>
+</header>
+
+<div class="shell">
+
+  <nav class="rail" id="rail" aria-label="Scenarios"></nav>
+
+  <main class="stage">
+    <section class="panel flat">
+      <header>
+        <h2>The spine — every flow is a subset of these six phases</h2>
+        <span class="id" id="flowid" style="font-size:11px;color:var(--steel)"></span>
+      </header>
+      <div class="bd" style="gap:9px">
+        <div class="spine" id="spine"></div>
+        <p class="hidnote" id="spinenote"></p>
+      </div>
+    </section>
+
+    <section class="panel flat">
+      <header><h2 id="scenname">Scenario</h2><span class="id" id="scenref" style="font-size:11px;color:var(--steel)"></span></header>
+      <div class="bd" style="gap:10px">
+        <p id="scendek" style="font-size:13px;color:var(--ink-2);max-width:70ch"></p>
+        <div id="scenwarn"></div>
+      </div>
+    </section>
+
+    <div class="objs" id="objs"></div>
+
+    <section class="panel flat">
+      <header>
+        <h2>What can be done right now</h2>
+        <span class="legend">
+          <span><i class="sw-k" style="background:var(--nav);border-color:var(--nav)"></i>available</span>
+          <span><i class="sw-k" style="background:var(--warn-bg);border-color:var(--warn-line)"></i>blocked, reason shown</span>
+          <span><i class="sw-k" style="background:var(--surface);border-style:dotted"></i>hidden</span>
+        </span>
+      </header>
+      <div class="bd" id="actions"></div>
+    </section>
+
+    <section class="panel flat">
+      <header>
+        <h2>Script</h2>
+        <span class="hidnote" id="scriptstat"></span>
+      </header>
+      <div class="steps" id="steps"></div>
+    </section>
+  </main>
+
+  <aside class="rail r" aria-label="Log and findings">
+    <div style="padding:13px 13px 10px"><div class="tabs" role="tablist">
+      <button class="tab" role="tab" id="tab-log" aria-selected="true">Event log</button>
+      <button class="tab" role="tab" id="tab-find" aria-selected="false">Findings</button>
+    </div></div>
+    <div id="logpane"><div class="logl" id="log"></div></div>
+    <div id="findpane" hidden></div>
+  </aside>
+</div>
+
+<dialog id="sheet"></dialog>
+<dialog id="cfgsheet"></dialog>
+
+<script>
+"use strict";
+/* ===========================================================================
+   PART 1 — VOCABULARY
+   Lifted verbatim from glossary.md §5 and §7 so the engine and the document
+   share one spelling. Anything the engine invents is marked ENGINE.
+   ======================================================================== */
+
+const LABEL = {           /* internal identifier -> displayed label (glossary §1.1) */
+  AWAITING_ASSIGNMENT_DEST:"Awaiting Dock",
+  DOCK_ASSIGNED:"Dock Assigned", YARD_ASSIGNED:"Going to yard", NONE:"No destination",
+  NOT_READY:"Not ready", IN_PREP:"In prep", READY:"Ready",
+  AWAITING_DOCK:"Awaiting Dock", SPOTTED:"Spotted", NEEDS_MOVE:"Needs move",
+  DROPPED_NO_DESTINATION:"Dropped — no dock", READY_TO_PULL:"Ready to pull",
+  BLOCKING_DOCK:"Blocking dock", ACCEPTING_FREIGHT:"Open — accepting",
+  READY_TO_DEPART:"Ready to depart", PRELOAD_STAGED:"Staged", STAGED_AGING:"Staged — aging",
+  AVAILABLE_FOR_ASSIGNMENT:"Available", AWAITING_ASSIGNMENT:"Awaiting assignment",
+  PART_LOAD_HELD:"Part load — blocked", PARTIAL_RECEIPT:"Partial receipt",
+  UNEXPECTED_RESIDUAL:"Unexpected freight", DETENTION_RISK:"Detention risk",
+  PAST_WINDOW:"Past window", OUTSIDE_PERIMETER:"Outside gate",
+  FREIGHT_OUTSIDE_PERIMETER:"Freight outside gate", FIRST_VISIT:"First visit",
+  ID_DISPUTED:"ID disputed", ID_SINGLE_SOURCE:"ID unconfirmed",
+  ENTERED_WITHOUT_CHECKIN:"Unauthorized entry", UNDECLARED_TRAILER_EXIT:"Wrong trailer left",
+  DECLARED_SUBSTITUTION:"Substituted", SUBSTITUTE_CARRIES_FREIGHT:"Substitute loaded",
+  PICKUP_NOT_TAKEN:"Pickup not taken",
+  DEPARTED_WITHOUT_AUTHORIZATION:"Left unauthorized", RECOVERY_WINDOW_OPEN:"Recoverable",
+  SPOT_CONFLICT:"Spot conflict", POSITION_STALE:"Position unconfirmed",
+  PLACEMENT_VARIANCE:"Placed elsewhere", UNVERIFIED_ASSIGNMENT:"Empty unverified",
+  INTEGRITY_ALARM:"Needs review", TRACTOR_ATTACHED:"Tractor attached",
+  UNRECORDED_DOCK_OCCUPANCY:"Unknown at dock", SPOT_UNCONFIRMED:"Not at dock?",
+  UNRECORDED_DOCK_DEPARTURE:"Left dock unrecorded", AWAITING_INTAKE:"Awaiting intake",
+  AT_DESTINATION:"At destination"
+};
+/* tone per flag: r = exception, a = attention, g = good, b = informational */
+const FLAG_TONE = {
+  INTEGRITY_ALARM:"r", UNEXPECTED_RESIDUAL:"r", PART_LOAD_HELD:"r",
+  ENTERED_WITHOUT_CHECKIN:"r", UNDECLARED_TRAILER_EXIT:"r", SPOT_CONFLICT:"r",
+  DEPARTED_WITHOUT_AUTHORIZATION:"r", FREIGHT_OUTSIDE_PERIMETER:"r", ID_DISPUTED:"r",
+  UNRECORDED_DOCK_OCCUPANCY:"r", SPOT_UNCONFIRMED:"r", UNRECORDED_DOCK_DEPARTURE:"r",
+  DETENTION_RISK:"a", STAGED_AGING:"a", PAST_WINDOW:"a", DROPPED_NO_DESTINATION:"a",
+  AWAITING_ASSIGNMENT:"a", UNVERIFIED_ASSIGNMENT:"a", PICKUP_NOT_TAKEN:"a",
+  BLOCKING_DOCK:"a", NOT_READY:"a", AWAITING_INTAKE:"a", ID_SINGLE_SOURCE:"a",
+  READY_TO_DEPART:"g", READY_TO_PULL:"g", AVAILABLE_FOR_ASSIGNMENT:"g", SPOTTED:"g",
+  PARTIAL_RECEIPT:"b", DECLARED_SUBSTITUTION:"b", PRELOAD_STAGED:"b",
+  ACCEPTING_FREIGHT:"b", TRACTOR_ATTACHED:"m", AT_DESTINATION:"m", FIRST_VISIT:"b",
+  AWAITING_DOCK:"a", NEEDS_MOVE:"a", PLACEMENT_VARIANCE:"b", POSITION_STALE:"a",
+  OUTSIDE_PERIMETER:"b", SUBSTITUTE_CARRIES_FREIGHT:"r", RECOVERY_WINDOW_OPEN:"a"
+};
+
+/* Blocked-action copy, matrix §3. These are UI strings, not paraphrase. */
+const WHY = {
+  OOS:"Trailer is out of service",
+  INTEGRITY:"Trailer state needs review before any action",
+  BOTH_DIRS:"Trailer holds both inbound and outbound freight — resolve first",
+  SESSION_ACTIVE:"Work is in progress at the dock",
+  SESSION_OPEN:"End or cancel the open session first",
+  MOVE_OPEN:"A move is already open for this trailer",
+  NOT_ADMITTED:"Admit the visit first",
+  NO_SHIPMENT_IN_SESSION:"Add at least one shipment",
+  FILL_OPEN:"Declare fill complete first",
+  FILL_COMPLETE:"Fill is declared complete — reopen fill to add freight",
+  PART_LOADED:"Resolve the part-loaded shipment first",
+  NOT_SEALED:"Seal the trailer first",
+  SEALED:"Break the seal first",
+  RESIDUAL:"Unexpected freight aboard — verify against the manifest",
+  UNVERIFIED:"Confirm the trailer is empty",
+  ROLE:"Not permitted for your role",
+  NO_DEST:"Assign a dock or yard destination first",
+  IDENTIFY:"Identify the arriving trailer first",
+  DOCKPASS:"Dockpass expired or already used",
+  RENUMBER:"Cannot renumber during active work",
+  NOT_AUTHORIZED:"Visit is not authorized to depart",
+  NO_ACTUAL:"Report where the trailer was actually placed"
+};
+
+/* Condition precedence, matrix §1.3. Lower acts first. */
+const CLS = {SERVICE:1, PHYSICAL:2, DATA:3, PERMISSION:4, STRUCTURAL:2};
+
+const ROLES = [
+  {id:"GUARD", label:"Guard"},
+  {id:"CLERK", label:"Gate clerk"},
+  {id:"DISPATCHER", label:"Dispatcher"},
+  {id:"DOCK_LEAD", label:"Dock lead"},
+  {id:"SPOTTER", label:"Spotter (yard team)"},
+  {id:"DRIVER", label:"Driver"},
+  {id:"SUPERVISOR", label:"Supervisor"}
+];
+
+const PHASES = [
+  {k:"P0", n:"Plan",             q:"What is expected?"},
+  {k:"P1", n:"Announce & access",q:"Who is here, and may they enter?"},
+  {k:"P2", n:"Destination",      q:"Where is this trailer going?"},
+  {k:"P3", n:"Position",         q:"Get it there"},
+  {k:"P4", n:"Dock work",        q:"Load or unload"},
+  {k:"P5", n:"Depart",           q:"Authorize and record leaving"},
+  {k:"P6", n:"After",            q:"Reconcile what actually happened"}
+];
+
+/* Facility config, glossary §9. Only the keys the engine actually reads. */
+const CONFIG_KEYS = [
+  {k:"readiness_requirements", kind:"list", def:[],
+   d:"A list, not a flag. Empty collapses the readiness dimension entirely — no state, screen or prompt may mention it.",
+   opts:[["", "none (plain cross-dock)"],["wash,inspect","wash, inspect"],["pre-cool","pre-cool (reefer)"]]},
+  {k:"require_readiness_before_assignment", kind:"flag", def:false,
+   d:"A genuine flag: it changes a precondition on ASSIGN_SHIPMENT."},
+  {k:"dock_presence_sensors", kind:"flag", def:true,
+   d:"Where installed. Decides whether spot-in is auto-confirmed and whether SPOTTED can ever fire."},
+  {k:"auto_create_move_on_dock_assignment", kind:"flag", def:false,
+   d:"Facility choice. Assigning a dock creates the move task with no human."},
+  {k:"admit_live_load_without_dock", kind:"flag", def:true,
+   d:"Facility choice. Off means HOLD_OUTSIDE is the only path when no dock is free."},
+  {k:"has_inside_lot", kind:"flag", def:true,
+   d:"Lot inventory, not a capacity computation. A facility with an inside lot effectively never uses HOLD_OUTSIDE."},
+  {k:"identification_cameras", kind:"flag", def:true,
+   d:"Entry and exit reads. Detective, never preventive — no gate decision waits on one."},
+  {k:"exit_identification_enabled", kind:"flag", def:true,
+   d:"Where cameras exist. Departure time backfills from the image capture timestamp."},
+  {k:"allow_add_shipment_to_active_session", kind:"flag", def:true,
+   d:"On by default. Lets a shipment join a session already ACTIVE, timed from joined_at."},
+  {k:"roles_can_declare_fill_complete", kind:"roles", def:["DOCK_LEAD","SUPERVISOR"],
+   d:"Facility-defined. The matrix never names which role is missing — a wrong hint is worse than none."}
+];
+/* ===========================================================================
+   PART 2 — THE WORLD, AND WHAT IS DERIVED FROM IT
+
+   Six trailer dimensions and three visit dimensions are stored (glossary §5).
+   Load state and every flag are computed on read, never stored — model §3.1
+   and §6.1 both insist on this, and it is the reason a contradiction here
+   surfaces as an INTEGRITY_ALARM rather than as two fields disagreeing.
+   ======================================================================== */
+
+let W = null;           /* the world */
+let SCEN = null;        /* active scenario */
+let CURSOR = 0;         /* script position */
+let DEVIATIONS = [];
+let SHOW_HIDDEN = false;
+let FINDINGS = [];      /* seeded + viewer-added */
+let db = null;
+
+function blankWorld(cfg){
+  return {
+    clock: 8*60,                     /* minutes since midnight; shift starts 08:00 */
+    config: cfg || defaultConfig(),
+    role: "CLERK",
+    docks: {}, spots: {}, lots: {},
+    trailers: {}, shipments: {}, loads: [],
+    visits: {}, sessions: [], moves: [], assignments: [],
+    idents: [], events: [], returns: [],
+    focusTrailer: null, focusVisit: null,
+    seq: 1
+  };
+}
+function defaultConfig(){
+  const c = {};
+  CONFIG_KEYS.forEach(k => { c[k.k] = Array.isArray(k.def) ? k.def.slice() : k.def; });
+  return c;
+}
+
+/* ---- constructors ------------------------------------------------------ */
+function mkTrailer(w, o){
+  const t = Object.assign({
+    id:o.id, number:o.number, carrier:o.carrier||"SWIFT", kind:o.kind||"53' DRY",
+    position:"OFF_SITE", dock:null, spot:null, lot:null,
+    destination:"NONE", requested_destination:null,
+    readiness: (w.config.readiness_requirements||[]).length ? "NOT_READY" : "READY",
+    service:"IN_SERVICE",
+    fill:"OPEN", empty_verification:"UNVERIFIED",
+    tractor:false, sealed:false,
+    identity_confidence:"SINGLE_SOURCE", position_confidence:"REPORTED",
+    first_visit:true, intake:null, stay:null, staged_since:null,
+    last_variance:false, verified_by_check:true
+  }, o);
+  w.trailers[t.id] = t; return t;
+}
+function mkShipment(w, o){
+  const s = Object.assign({id:o.id, direction:o.direction,
+    status: o.direction==="OUTBOUND" ? "PLANNED" : "EXPECTED", consignee:o.consignee||"—"}, o);
+  w.shipments[s.id] = s; return s;
+}
+function mkLoad(w, shipment_id, trailer_id, link_state){
+  const sh = W===w ? w.shipments[shipment_id] : w.shipments[shipment_id];
+  const row = {shipment_id, trailer_id, link_state, direction: sh.direction};
+  w.loads.push(row); return row;
+}
+function mkVisit(w, o){
+  const v = Object.assign({
+    id:o.id, registration:"NOT_REGISTERED", presence:"OFF_SITE",
+    visit_type:"LIVE", party_type:"THIRD_PARTY", access_method:"DOCKPASS",
+    legs:[], dockpass:null, dockpass_consumed:false,
+    arrived_at:null, admitted_at:null, on_site_since:null,
+    window:[9*60, 11*60], turned_away:false, departed_at:null,
+    held_outside:false, substituted:false
+  }, o);
+  w.visits[v.id] = v; return v;
+}
+function mkDock(w, id){ w.docks[id] = {id, state:"FREE", sensor:"VACANT", holder:null}; }
+function mkSpot(w, id){ w.spots[id] = {id, occupants:[]}; }
+function mkLot(w, id, inside){ w.lots[id] = {id, inside_fence:inside}; }
+
+/* ---- accessors --------------------------------------------------------- */
+const rowsOf   = (w,tid) => w.loads.filter(r => r.trailer_id===tid);
+const legsOf   = (w,vid) => (w.visits[vid] ? w.visits[vid].legs : []);
+const bringLeg = (w,v)   => v && v.legs.find(l => l.kind==="BRING") || null;
+const takeLeg  = (w,v)   => v && v.legs.find(l => l.kind==="TAKE")  || null;
+const openSession = (w,tid) => w.sessions.find(s =>
+  s.trailer_id===tid && (s.state==="OPEN" || s.state==="ACTIVE")) || null;
+const lastSession = (w,tid) => w.sessions.filter(s => s.trailer_id===tid).slice(-1)[0] || null;
+const openMove  = (w,tid) => w.moves.find(m =>
+  m.trailer_id===tid && !["COMPLETED","CANCELLED"].includes(m.state)) || null;
+const heldAssign = (w,tid) => w.assignments.find(a =>
+  a.trailer_id===tid && a.state==="HELD") || null;
+function visitOfTrailer(w, tid){
+  return Object.values(w.visits).find(v => !v.departed_at && !v.turned_away &&
+    v.legs.some(l => l.trailer_id===tid)) || null;
+}
+const onSite = t => !["OFF_SITE"].includes(t.position) &&
+  !(t.position==="LOT" && t.lot && W.lots[t.lot] && !W.lots[t.lot].inside_fence);
+
+/* ---- load state, model §3.1 (precedence order; first match wins) ------- */
+function loadState(w, tid){
+  const rows = rowsOf(w,tid);
+  const has = st => rows.some(r => r.link_state===st);
+  const inWork = has("LOADING") || has("UNLOADING");
+  const active = w.sessions.some(s => s.trailer_id===tid && s.state==="ACTIVE");
+  const dirs = new Set(rows.map(r => r.direction));
+  if ((inWork && !active) || (dirs.has("INBOUND") && dirs.has("OUTBOUND"))) return "INTEGRITY_ALARM";
+  if (inWork) return "IN_WORK";
+  if (has("PART_LOADED")) return "PART_LOADED";
+  if (has("ON_BOARD")) return "HAS_FREIGHT";
+  if (has("ASSIGNED")) return "ASSIGNED_ONLY";
+  return "EMPTY";
+}
+const hasFreight = (w,tid) => ["HAS_FREIGHT","PART_LOADED","IN_WORK"].includes(loadState(w,tid));
+
+/* readiness is invisible where no requirements are configured (model §3.7) */
+const readinessLive = w => (w.config.readiness_requirements||[]).length > 0;
+const sensorsLive   = w => !!w.config.dock_presence_sensors;
+const camerasLive   = w => !!w.config.identification_cameras;
+
+/* ---- destination / position agreement --------------------------------- */
+function atDestination(w,t){
+  if (t.destination==="DOCK_ASSIGNED") return t.position==="DOCK" && !!t.dock;
+  if (t.destination==="YARD_ASSIGNED") return t.position==="YARD_SPOT" || t.position==="LOT";
+  return false;
+}
+
+/* ---- derived flags, model §6.1 / glossary §7 -------------------------- */
+function flagsOf(w, tid){
+  const t = w.trailers[tid]; if(!t) return [];
+  const f = [];
+  const rows = rowsOf(w,tid), ls = loadState(w,tid);
+  const v = visitOfTrailer(w,t.id);
+  const sess = openSession(w,tid), mv = openMove(w,tid);
+  const inOutsideLot = t.position==="LOT" && t.lot && !w.lots[t.lot].inside_fence;
+
+  if (ls==="INTEGRITY_ALARM") f.push("INTEGRITY_ALARM");
+  if (t.tractor) f.push("TRACTOR_ATTACHED");
+  if (t.destination==="AWAITING_ASSIGNMENT") f.push("AWAITING_DOCK");
+  if (atDestination(w,t)) f.push("AT_DESTINATION");
+  /* SPOTTED is the narrow sense only: at a dock AND sensor-confirmed (glossary §2) */
+  if (t.position==="DOCK" && t.dock && sensorsLive(w) && w.docks[t.dock].sensor==="OCCUPIED")
+    f.push("SPOTTED");
+  if (sensorsLive(w)){
+    Object.values(w.docks).forEach(d => {
+      const believed = Object.values(w.trailers).find(x => x.position==="DOCK" && x.dock===d.id);
+      if (d.sensor==="OCCUPIED" && !believed && d.id===t.dock) f.push("UNRECORDED_DOCK_OCCUPANCY");
+    });
+    if (t.position==="DOCK" && t.dock && w.docks[t.dock].sensor==="VACANT"){
+      f.push("SPOT_UNCONFIRMED");
+      if (t.stay || sess) f.push("UNRECORDED_DOCK_DEPARTURE");
+    }
+  }
+  if (!t.tractor && (t.position==="YARD_SPOT"||t.position==="LOT") &&
+      t.destination==="AWAITING_ASSIGNMENT") f.push("DROPPED_NO_DESTINATION");
+  if (!mv && t.destination!=="NONE" && !atDestination(w,t) && onSite(t) && !t.tractor)
+    f.push("NEEDS_MOVE");
+  if (inOutsideLot) f.push("OUTSIDE_PERIMETER");
+  if (inOutsideLot && hasFreight(w,tid)) f.push("FREIGHT_OUTSIDE_PERIMETER");
+  if (t.intake==="AWAITING_INTAKE") f.push("AWAITING_INTAKE");
+  if (readinessLive(w) && t.readiness==="NOT_READY") f.push("NOT_READY");
+  if (t.position==="DOCK" && !sess && (t.fill==="COMPLETE" || ls==="EMPTY")) f.push("READY_TO_PULL");
+  if (t.position==="DOCK" && ls==="EMPTY" && !rows.length && !sess) f.push("AWAITING_ASSIGNMENT");
+  if (hasFreight(w,tid) && t.fill==="OPEN") f.push("ACCEPTING_FREIGHT");
+  if (t.readiness==="READY" && ls==="EMPTY" && t.service==="IN_SERVICE" && onSite(t) &&
+      !rows.length && t.intake!=="AWAITING_INTAKE") f.push("AVAILABLE_FOR_ASSIGNMENT");
+  if (rows.some(r => r.link_state==="PART_LOADED")) f.push("PART_LOAD_HELD");
+  if (rows.some(r => r.link_state==="ASSIGNED") && t.empty_verification==="CLAIMED_EMPTY")
+    f.push("UNVERIFIED_ASSIGNMENT");
+  if (t.sealed && rows.some(r => r.direction==="OUTBOUND" && r.link_state==="ON_BOARD") &&
+      (t.position==="YARD_SPOT"||t.position==="LOT")) f.push("PRELOAD_STAGED");
+  if (t.staged_since!=null && w.clock - t.staged_since > 240) f.push("STAGED_AGING");
+  if (t.last_variance) f.push("PLACEMENT_VARIANCE");
+  if (t.first_visit) f.push("FIRST_VISIT");
+  if (t.identity_confidence==="DISPUTED") f.push("ID_DISPUTED");
+  else if (t.identity_confidence==="SINGLE_SOURCE" && camerasLive(w) && onSite(t))
+    f.push("ID_SINGLE_SOURCE");
+  if (!t.verified_by_check) f.push("POSITION_STALE");
+  Object.values(w.spots).forEach(s => { if (s.occupants.length>1 && s.occupants.includes(tid))
+    f.push("SPOT_CONFLICT"); });
+
+  /* visit-sourced flags, shown on the trailer because that is where they bite */
+  if (v){
+    const tl = takeLeg(w,v);
+    if (tl && tl.trailer_id===tid){
+      const expected = (tl.expected_shipment_ids||[]).slice();
+      const residual = (tl.expected_residual_shipment_ids||[]).slice();
+      const aboard = rows.filter(r => r.link_state==="ON_BOARD").map(r => r.shipment_id);
+      const stray = aboard.filter(s => !expected.includes(s) && !residual.includes(s));
+      if (stray.length) f.push("UNEXPECTED_RESIDUAL");
+      const resAboard = aboard.filter(s => residual.includes(s));
+      if (resAboard.length && !stray.length) f.push("PARTIAL_RECEIPT");
+      if (readyToDepart(w,v,tid) && !stray.length) f.push("READY_TO_DEPART");
+    }
+    if (v.visit_type==="LIVE" && v.on_site_since!=null &&
+        w.clock - v.on_site_since >= 90) f.push("DETENTION_RISK");
+    if (w.clock > v.window[1] && !v.departed_at) f.push("PAST_WINDOW");
+    if (v.substituted) f.push("DECLARED_SUBSTITUTION");
+  }
+  /* exit-read outcomes, resolved after departure (model §5.1) */
+  w.idents.filter(i => i.kind==="EXIT" && i.unresolved).forEach(i => {
+    if (i.declared_trailer===tid || i.read_trailer===tid){
+      if (i.outcome==="UNDECLARED") f.push("UNDECLARED_TRAILER_EXIT");
+      if (i.outcome==="UNAUTHORIZED") f.push("DEPARTED_WITHOUT_AUTHORIZATION");
+      if (i.outcome==="UNDECLARED" && w.clock - i.at <= 30) f.push("RECOVERY_WINDOW_OPEN");
+    }
+  });
+  if (w.idents.some(i => i.kind==="ENTRY" && i.no_registration && i.read_trailer===tid))
+    f.push("ENTERED_WITHOUT_CHECKIN");
+  if (v && v.pickup_not_taken) f.push("PICKUP_NOT_TAKEN");
+
+  return [...new Set(f)];
+}
+
+/* READY_TO_DEPART / AUTHORIZE_DEPARTURE share one predicate so the flag and
+   the action can never disagree (glossary §7, model §5.1). */
+function readyToDepart(w, v, tid){
+  const t = w.trailers[tid]; if(!t) return false;
+  const tl = takeLeg(w,v); if(!tl || tl.trailer_id!==tid) return false;
+  const rows = rowsOf(w,tid);
+  const outboundAboard = rows.some(r => r.direction==="OUTBOUND" && r.link_state==="ON_BOARD");
+  if (outboundAboard){
+    if (t.fill!=="COMPLETE") return false;
+    if (!t.sealed && v.party_type!=="COMPANY_DRIVER") return false;
+  }
+  if (rows.some(r => r.link_state==="PART_LOADED")) return false;
+  return true;
+}
+
+/* composed display string, model §3.6.5 */
+function displayStatus(w, tid){
+  const t = w.trailers[tid]; if(!t) return "—";
+  const v = visitOfTrailer(w,t.id);
+  const pending = v && (v.presence==="AT_FACILITY" || v.presence==="AT_GATE");
+  const tail = pending ? " — Pending Gate Check-In" : "";
+  if (t.position==="DOCK" && t.dock){
+    const spotted = sensorsLive(w) && w.docks[t.dock].sensor==="OCCUPIED";
+    return (spotted ? "Spotted at Dock " : "At Dock ") + t.dock;
+  }
+  if (t.destination==="AWAITING_ASSIGNMENT") return "Awaiting Dock" + tail;
+  if (t.destination==="DOCK_ASSIGNED") return "Dock Assigned" + tail;
+  if (t.destination==="YARD_ASSIGNED") return "Going to yard" + tail;
+  if (t.position==="OFF_SITE") return v && v.departed_at ? "Departed" : "Off site";
+  if (t.position==="IN_MOTION"){
+    const m = openMove(w,tid);
+    return "In motion → " + (m ? m.requested_destination : "—");
+  }
+  if (t.position==="YARD_SPOT") return "In yard" + (t.spot ? " · " + t.spot : "");
+  if (t.position==="LOT") return (w.lots[t.lot] && w.lots[t.lot].inside_fence ? "Inside lot" : "Outside lot");
+  if (t.position==="AT_GATE_IN") return "Inbound apron";
+  if (t.position==="AT_GATE_OUT") return "Exit lane";
+  return t.position;
+}
+
+/* ---- event log --------------------------------------------------------- */
+function log(kind, body){
+  W.events.push({at:W.clock, kind, body});
+}
+const hhmm = m => String(Math.floor(m/60)%24).padStart(2,"0") + ":" + String(m%60).padStart(2,"0");
+/* ===========================================================================
+   PART 3 — THE ACTION CATALOG
+
+   One gate function per action, returning the list of conditions that FAIL.
+   Treatment is then decided once, centrally, by matrix §1.1–1.5 — which is
+   what matrix §6 open question 1 asks for ("make the treatment a property of
+   the condition in code, so it is defined once rather than per screen").
+
+   Each failure carries its precedence class (matrix §1.3) and its treatment:
+     D — the clearing action is available here, to someone present
+     H — clearing it needs a different plan, position, or operation
+   ======================================================================== */
+
+const D = (cls,why) => ({cls, t:"D", why});
+const H = (cls,why) => ({cls, t:"H", why});
+
+/* Treatment resolution. Two rules the documents state, and one they do not. */
+function treat(fails){
+  if (!fails.length) return {t:"A"};
+  /* ENGINE DECISION (finding F9): nothing in matrix §1.1–1.3 says what wins
+     when an action fails both a hidden-class and a disabled-class condition.
+     Hiding wins here — showing "Trailer is out of service" on a control that
+     is also structurally impossible sends the user to fix the wrong thing. */
+  const hid = fails.filter(f => f.t==="H").sort((a,b)=>a.cls-b.cls);
+  if (hid.length) return {t:"H", why:hid[0].why};
+  const srt = fails.slice().sort((a,b)=>a.cls-b.cls);
+  return {t:"D", why:srt[0].why};
+}
+
+/* Matrix §2.1, transcribed. The engine derives its own answer from the
+   model's preconditions; where the two disagree the action is marked. */
+const MATRIX_21 = {
+  SELF_REGISTER:      {OFF_SITE:"H", AT_FACILITY:"H", AT_GATE:"H", ON_SITE:"H"},
+  RECORD_ARRIVAL:     {OFF_SITE:"A", AT_FACILITY:"A", AT_GATE:"H", ON_SITE:"H"},
+  ADMIT:              {OFF_SITE:"H", AT_FACILITY:"H", AT_GATE:"A", ON_SITE:"H"},
+  REGISTER_AND_ADMIT: {OFF_SITE:"H", AT_FACILITY:"H", AT_GATE:"A", ON_SITE:"H"},
+  ASSIGN_DOCK:        {OFF_SITE:"H", AT_FACILITY:"A", AT_GATE:"A", ON_SITE:"A"},
+  RELEASE_DOCK:       {OFF_SITE:"H", AT_FACILITY:"A", AT_GATE:"A", ON_SITE:"A"},
+  ASSIGN_YARD:        {OFF_SITE:"H", AT_FACILITY:"A", AT_GATE:"A", ON_SITE:"A"},
+  BIND_TRAILER_TO_LEG:{OFF_SITE:"A", AT_FACILITY:"A", AT_GATE:"A", ON_SITE:"A"},
+  TURN_AWAY:          {OFF_SITE:"H", AT_FACILITY:"A", AT_GATE:"A", ON_SITE:"A"},
+  RESOLVE_IDENTIFICATION:{OFF_SITE:"H", AT_FACILITY:"H", AT_GATE:"A", ON_SITE:"A"},
+  CREATE_MOVE_TASK:   {OFF_SITE:"H", AT_FACILITY:"D", AT_GATE:"D", ON_SITE:"A"},
+  ASSIGN_SHIPMENT:    {OFF_SITE:"H", AT_FACILITY:"H", AT_GATE:"H"}
+};
+/* The §2.1 columns only govern gate processing. Once the trailer is past the
+   apron, §2.2–2.6 take over and the comparison would be meaningless. */
+function inGateContext(w, ctx){
+  if (!ctx.t) return true;
+  return ["OFF_SITE","AT_GATE_IN"].includes(ctx.t.position);
+}
+function matrixSays(id, w, ctx){
+  if (!MATRIX_21[id] || !ctx.v || !inGateContext(w,ctx)) return null;
+  return MATRIX_21[id][ctx.v.presence] || null;
+}
+
+/* ---- shared condition sets -------------------------------------------- */
+function svc(w,t){
+  const o = [];
+  if (!t) return o;
+  if (t.service==="OUT_OF_SERVICE") o.push(D(CLS.SERVICE, WHY.OOS));
+  if (loadState(w,t.id)==="INTEGRITY_ALARM") o.push(D(CLS.SERVICE, WHY.INTEGRITY));
+  return o;
+}
+function roleIn(w, list){ return list.includes(w.role); }
+function needRole(w, list){
+  return roleIn(w,list) ? [] : [D(CLS.PERMISSION, WHY.ROLE)];
+}
+const SUP = ["SUPERVISOR"];
+
+/* ======================================================================== */
+const ACTIONS = {
+
+/* ---------------- 5.1 Gate --------------------------------------------- */
+SELF_REGISTER:{
+  label:"Self-register", on:"visit", actor:"Driver", ref:"model §5.1 · flows P1a",
+  gate(w,c){
+    if (!c.v) return [H(CLS.STRUCTURAL,"No visit in context")];
+    if (c.v.registration!=="NOT_REGISTERED") return [H(CLS.STRUCTURAL,"Already registered")];
+    if (c.v.presence!=="OFF_SITE" && c.v.presence!=="AT_FACILITY")
+      return [H(CLS.PHYSICAL,"Past the gate already")];
+    if (w.clock < c.v.window[0]-120) return [D(CLS.DATA,"Outside the appointment window")];
+    return [];
+  },
+  form(w,c){
+    const bl = bringLeg(w,c.v);
+    return bl && !bl.trailer_id
+      ? [{k:"number", label:"Trailer number the driver gives", type:"text", def:bl.hint_number||""}]
+      : [];
+  },
+  apply(w,c,vals){
+    const v = c.v;
+    v.registration = "SELF_REGISTERED";
+    v.presence = "AT_FACILITY";
+    v.arrived_at = w.clock;
+    v.dockpass = String(10000 + Math.floor(Math.random()*89999));
+    log("act","<b>SELF_REGISTER</b> — QR sign scanned at the facility. Dockpass "+v.dockpass+" issued.");
+    const bl = bringLeg(w,v);
+    if (bl && !bl.trailer_id && vals.number) bindLeg(w, v, bl, vals.number, "DRIVER");
+    const t = bl && bl.trailer_id ? w.trailers[bl.trailer_id] : null;
+    if (t) t.destination = "AWAITING_ASSIGNMENT";
+    else log("sys","No BRING leg — nothing to set <b>destination</b> on. See finding F6.");
+  }
+},
+
+RECORD_ARRIVAL:{
+  label:"Record arrival", on:"visit", actor:"Guard", ref:"model §5.1",
+  gate(w,c){
+    if (!c.v) return [H(CLS.STRUCTURAL,"No visit in context")];
+    if (c.v.registration==="SELF_REGISTERED")
+      return [H(CLS.STRUCTURAL,"The QR scan already recorded arrival")];
+    if (["AT_GATE","ON_SITE","AUTHORIZED_TO_DEPART","DEPARTED"].includes(c.v.presence))
+      return [H(CLS.STRUCTURAL,"Arrival already recorded")];
+    return [];
+  },
+  apply(w,c){
+    c.v.presence = "AT_GATE"; c.v.arrived_at = w.clock;
+    log("act","<b>RECORD_ARRIVAL</b> — truck noted in the gate lane.");
+  }
+},
+
+ADMIT:{
+  label:"Admit", on:"visit", actor:"Gate / kiosk", ref:"model §5.1 · flows P1b",
+  gate(w,c){
+    const v = c.v;
+    if (!v) return [H(CLS.STRUCTURAL,"No visit in context")];
+    if (["ON_SITE","AUTHORIZED_TO_DEPART","DEPARTED"].includes(v.presence))
+      return [H(CLS.STRUCTURAL,"Already admitted")];
+    const f = [];
+    /* model §5.1: presence = AT_FACILITY or AT_GATE */
+    if (!["AT_FACILITY","AT_GATE"].includes(v.presence))
+      f.push(H(CLS.PHYSICAL,"The truck is not here yet"));
+    const pass = v.dockpass && !v.dockpass_consumed;
+    const gateReg = v.registration==="REGISTERED_AT_GATE";
+    /* ENGINE (finding F7): flows §8 admits a company driver on an RF badge with
+       no dockpass and no guard, but the catalog names no such credential. The
+       engine accepts the badge; the catalog would have refused this visit. */
+    const badge = v.access_method==="RF_BADGE";
+    if (!pass && !gateReg && !badge) f.push(D(CLS.DATA, WHY.DOCKPASS));
+    const bl = bringLeg(w,v);
+    if (bl && !bl.trailer_id) f.push(D(CLS.DATA, WHY.IDENTIFY));
+    if (!w.config.admit_live_load_without_dock && v.visit_type==="LIVE"){
+      const t = bl && w.trailers[bl.trailer_id];
+      if (t && t.destination==="AWAITING_ASSIGNMENT")
+        f.push(D(CLS.PHYSICAL,"No dock assigned — this facility holds live loads outside"));
+    }
+    return f;
+  },
+  apply(w,c){
+    const v = c.v;
+    v.dockpass_consumed = true;
+    v.presence = "ON_SITE"; v.admitted_at = w.clock; v.on_site_since = w.clock;
+    v.held_outside = false;
+    const bl = bringLeg(w,v);
+    if (bl && bl.trailer_id){
+      const t = w.trailers[bl.trailer_id];
+      t.position = "AT_GATE_IN";
+      rowsOf(w,t.id).filter(r => r.direction==="INBOUND").forEach(r => {
+        w.shipments[r.shipment_id].status = "ARRIVED";
+      });
+      /* "if claimed empty" — read as nothing aboard, not load state EMPTY: an
+         outbound live load already carries ASSIGNED rows from its TAKE leg. */
+      if (!hasFreight(w,t.id) && t.empty_verification==="UNVERIFIED")
+        t.empty_verification = "CLAIMED_EMPTY";
+    }
+    log("act","<b>ADMIT</b> — gate opened. Dockpass consumed; <b>presence → ON_SITE</b>.");
+  }
+},
+
+REGISTER_AND_ADMIT:{
+  label:"Register and admit (kiosk)", on:"visit", actor:"Kiosk / guard", ref:"model §5.1",
+  gate(w,c){
+    const v = c.v;
+    if (!v) return [H(CLS.STRUCTURAL,"No visit in context")];
+    if (v.registration!=="NOT_REGISTERED") return [H(CLS.STRUCTURAL,"Already registered")];
+    if (["ON_SITE","DEPARTED"].includes(v.presence)) return [H(CLS.STRUCTURAL,"Already admitted")];
+    return [];
+  },
+  form(w,c){
+    const bl = bringLeg(w,c.v);
+    return bl && !bl.trailer_id
+      ? [{k:"number", label:"Trailer number", type:"text", def:bl.hint_number||""}] : [];
+  },
+  apply(w,c,vals){
+    const v = c.v;
+    v.registration = "REGISTERED_AT_GATE";
+    if (v.arrived_at==null) v.arrived_at = w.clock;
+    const bl = bringLeg(w,v);
+    if (bl && !bl.trailer_id && vals.number) bindLeg(w,v,bl,vals.number,"GUARD");
+    v.presence = "AT_GATE";
+    ACTIONS.ADMIT.apply(w,c,{});
+    log("sys","One transaction, same dimensions as the two-stage path (model §3.6.4).");
+  }
+},
+
+HOLD_OUTSIDE:{
+  label:"Hold outside the fence", on:"visit", actor:"Guard", ref:"model §5.1",
+  gate(w,c){
+    const v = c.v;
+    if (!v) return [H(CLS.STRUCTURAL,"No visit in context")];
+    if (!["AT_GATE","AT_FACILITY"].includes(v.presence))
+      return [H(CLS.PHYSICAL,"Only a visit waiting at the gate can be held")];
+    const bl = bringLeg(w,v);
+    const t = bl && w.trailers[bl.trailer_id];
+    if (t && t.destination==="DOCK_ASSIGNED")
+      return [H(CLS.STRUCTURAL,"A dock is assigned — nothing to hold for")];
+    if (w.config.has_inside_lot)
+      return [H(CLS.STRUCTURAL,"This facility has an inside lot — admit and park instead")];
+    return [];
+  },
+  apply(w,c){
+    c.v.held_outside = true; c.v.presence = "AT_GATE";
+    log("act","<b>HOLD_OUTSIDE</b> — held outside the fence; stays in the dock-assignment queue. Detention clock not started.");
+  }
+},
+
+BIND_TRAILER_TO_LEG:{
+  label:"Bind trailer to leg", on:"visit", actor:"Guard / driver", ref:"model §5.1 (§9 #37)",
+  gate(w,c){
+    const v = c.v;
+    if (!v) return [H(CLS.STRUCTURAL,"No visit in context")];
+    if (!v.legs.some(l => !l.trailer_id)) return [H(CLS.STRUCTURAL,"Every leg already names a trailer")];
+    return [];
+  },
+  form(w,c){
+    const free = c.v.legs.filter(l => !l.trailer_id);
+    return [
+      {k:"leg", label:"Leg", type:"select",
+       options: free.map(l => [l.kind, l.kind + " leg"])},
+      {k:"number", label:"Trailer number", type:"text", def:""}
+    ];
+  },
+  apply(w,c,vals){
+    const leg = c.v.legs.find(l => l.kind===vals.leg && !l.trailer_id);
+    bindLeg(w, c.v, leg, vals.number, w.role==="DRIVER" ? "DRIVER" : "GUARD");
+  }
+},
+
+VERIFY_EMPTY:{
+  label:"Verify empty", on:"trailer", actor:"Guard", ref:"model §5.1 (§9 #6)",
+  gate(w,c){
+    if (!c.t) return [H(CLS.STRUCTURAL,"No trailer in context")];
+    /* §5.1 says "load state EMPTY", but an outbound live load is ASSIGNED_ONLY
+       from the moment its leg is bound — under the literal reading, VERIFY_EMPTY
+       could never fire on the flow that needs it most. Read as nothing aboard. */
+    if (hasFreight(w,c.t.id)) return [H(CLS.STRUCTURAL,"Freight aboard — not a candidate")];
+    if (c.t.empty_verification==="VERIFIED_EMPTY") return [H(CLS.STRUCTURAL,"Already verified")];
+    return [];
+  },
+  apply(w,c){
+    c.t.empty_verification = "VERIFIED_EMPTY";
+    log("act","<b>VERIFY_EMPTY</b> — physically confirmed empty.");
+  }
+},
+
+TURN_AWAY:{
+  label:"Turn away", on:"visit", actor:"Guard", ref:"model §5.1 · matrix §2.1",
+  gate(w,c){
+    const v = c.v;
+    if (!v) return [H(CLS.STRUCTURAL,"No visit in context")];
+    if (v.turned_away) return [H(CLS.STRUCTURAL,"Already turned away")];
+    if (v.presence==="OFF_SITE") return [H(CLS.PHYSICAL,"Nothing here to turn away")];
+    if (v.presence==="DEPARTED") return [H(CLS.PHYSICAL,"Already gone")];
+    return [];
+  },
+  form(){ return [{k:"reason", label:"Reason code", type:"select", options:[
+    ["APPT_MISMATCH","Appointment mismatch"],["NO_PAPERWORK","No paperwork"],
+    ["EQUIP_REJECT","Equipment rejected"],["CAPACITY","No capacity today"]]}]; },
+  apply(w,c,vals){
+    const v = c.v;
+    v.turned_away = true; v.turn_reason = vals.reason;
+    w.assignments.filter(a => a.state==="HELD" &&
+      v.legs.some(l => l.trailer_id===a.trailer_id)).forEach(a => {
+        a.state = "RELEASED"; a.release_reason = "TURNED_AWAY";
+        w.docks[a.dock].state = "FREE"; w.docks[a.dock].holder = null;
+        const t = w.trailers[a.trailer_id];
+        if (t) t.destination = "AWAITING_ASSIGNMENT";
+      });
+    log("act","<b>TURN_AWAY</b> — refused ("+vals.reason+"). Any held dock released.");
+  }
+},
+
+RESOLVE_IDENTIFICATION:{
+  label:"Resolve identification", on:"trailer", actor:"Clerk", ref:"model §5.1 · §2.15",
+  gate(w,c){
+    const open = w.idents.filter(i => i.unresolved &&
+      (i.read_trailer===(c.t&&c.t.id) || i.declared_trailer===(c.t&&c.t.id)));
+    if (!open.length) return [H(CLS.STRUCTURAL,"Identification is corroborated — nothing to settle")];
+    return needRole(w, ["CLERK","SUPERVISOR","GUARD"]);
+  },
+  form(w,c){
+    return [{k:"source", label:"Which source was correct?", type:"select", options:[
+      ["GUARD","The guard / driver reading"],["CAMERA_AI","The camera reading"]]}];
+  },
+  apply(w,c,vals){
+    const open = w.idents.filter(i => i.unresolved &&
+      (i.read_trailer===c.t.id || i.declared_trailer===c.t.id));
+    open.forEach(i => { i.unresolved = false; i.correct_source = vals.source; });
+    if (c.t) c.t.identity_confidence = "CORROBORATED";
+    log("act","<b>RESOLVE_IDENTIFICATION</b> — recorded that <b>"+vals.source+
+      "</b> was right, and who decided. This is the per-source accuracy data (§10.7).");
+  }
+},
+
+AUTHORIZE_DEPARTURE:{
+  label:"Authorize departure", on:"visit", actor:"Clerk", ref:"model §5.1 · matrix §2.6",
+  gate(w,c){
+    const v = c.v;
+    if (!v) return [H(CLS.STRUCTURAL,"No visit in context")];
+    if (v.presence==="DEPARTED") return [H(CLS.STRUCTURAL,"Already departed")];
+    if (v.presence==="AUTHORIZED_TO_DEPART") return [H(CLS.STRUCTURAL,"Already authorized")];
+    if (!["ON_SITE"].includes(v.presence)) return [H(CLS.PHYSICAL,"The visit is not on site")];
+    const f = [];
+    const unbound = v.legs.filter(l => !l.trailer_id && !l.bobtail);
+    if (unbound.length) f.push(D(CLS.DATA, WHY.IDENTIFY));
+    const tl = takeLeg(w,v);
+    if (tl && tl.trailer_id){
+      const t = w.trailers[tl.trailer_id];
+      f.push(...svc(w,t));
+      const rows = rowsOf(w,t.id);
+      const expected = (tl.expected_shipment_ids||[]);
+      const residual = (tl.expected_residual_shipment_ids||[]);
+      const aboard = rows.filter(r => r.link_state==="ON_BOARD").map(r => r.shipment_id);
+      const stray = aboard.filter(s => !expected.includes(s) && !residual.includes(s));
+      if (stray.length) f.push(D(CLS.DATA, WHY.RESIDUAL));
+      if (rows.some(r => r.link_state==="PART_LOADED")) f.push(D(CLS.DATA, WHY.PART_LOADED));
+      const outboundAboard = rows.some(r => r.direction==="OUTBOUND" && r.link_state==="ON_BOARD");
+      if (outboundAboard){
+        if (t.fill!=="COMPLETE") f.push(D(CLS.DATA, WHY.FILL_OPEN));
+        else if (!t.sealed){
+          if (v.party_type==="COMPANY_DRIVER")
+            log0("Seal ceremony relaxed for a company driver (model §5.1) — the load match is not.");
+          else f.push(D(CLS.DATA, WHY.NOT_SEALED));
+        }
+      }
+      if (openSession(w,t.id)) f.push(D(CLS.PHYSICAL, WHY.SESSION_OPEN));
+      if (openMove(w,t.id)) f.push(D(CLS.PHYSICAL, WHY.MOVE_OPEN));
+    }
+    return f;
+  },
+  apply(w,c){
+    c.v.presence = "AUTHORIZED_TO_DEPART"; c.v.authorized_at = w.clock;
+    log("act","<b>AUTHORIZE_DEPARTURE</b> — legs verified, freight matched. <b>presence → AUTHORIZED_TO_DEPART</b>.");
+  }
+},
+
+CHECK_OUT:{
+  label:"Check out", on:"visit", actor:"Gate", ref:"model §5.1 · flows P5b",
+  gate(w,c){
+    const v = c.v;
+    if (!v) return [H(CLS.STRUCTURAL,"No visit in context")];
+    if (v.presence==="DEPARTED") return [H(CLS.STRUCTURAL,"Already checked out")];
+    if (v.presence!=="AUTHORIZED_TO_DEPART") return [D(CLS.DATA, WHY.NOT_AUTHORIZED)];
+    return [];
+  },
+  apply(w,c){
+    const v = c.v;
+    const tl = takeLeg(w,v);
+    v.presence = "DEPARTED"; v.departed_at = w.clock;
+    if (tl && tl.trailer_id){
+      const t = w.trailers[tl.trailer_id];
+      releasePosition(w,t);
+      t.position = "OFF_SITE"; t.tractor = false; t.destination = "NONE";
+      rowsOf(w,t.id).filter(r => r.direction==="OUTBOUND").forEach(r => {
+        w.shipments[r.shipment_id].status = "DEPARTED";
+      });
+      log("act","<b>CHECK_OUT</b> — <b>"+t.number+"</b> departed; outbound shipments <b>DEPARTED</b>.");
+    } else {
+      log("act","<b>CHECK_OUT</b> — departed bobtail. Exit read will return <b>NO_TRAILER</b>.");
+      const expectedTake = v.legs.find(l => l.kind==="TAKE" && l.intended_trailer);
+      if (expectedTake) v.pickup_not_taken = true;
+    }
+    log("sys","Engine sets <b>presence → DEPARTED</b> (glossary §5.4). The action catalog says "+
+      "<b>CHECKED_OUT</b>, which is not a value of that dimension — finding F3.");
+  }
+},
+
+DECLARE_TAKE_LEG_CHANGE:{
+  label:"Declare take-leg change", on:"visit", actor:"Driver at the gate", ref:"model §5.1 (§9 #27)",
+  gate(w,c){
+    const v = c.v;
+    if (!v) return [H(CLS.STRUCTURAL,"No visit in context")];
+    if (v.presence==="DEPARTED") return [H(CLS.PHYSICAL,"Already gone — this is CORRECT_DEPARTURE now")];
+    if (!["ON_SITE","AUTHORIZED_TO_DEPART"].includes(v.presence))
+      return [H(CLS.PHYSICAL,"Only from on site, before check-out")];
+    if (!takeLeg(w,v)) return [H(CLS.STRUCTURAL,"No TAKE leg to amend")];
+    return [];
+  },
+  form(w,c){
+    const here = Object.values(w.trailers).filter(t => onSite(t));
+    return [{k:"sub", label:"Trailer actually taken", type:"select",
+      options: [["__BOBTAIL__","Nothing — leaving bobtail"]].concat(
+        here.map(t => [t.id, t.number + " · " + t.carrier +
+          (hasFreight(w,t.id) ? " (carries freight)" : " (empty)")]))}];
+  },
+  apply(w,c,vals){
+    const v = c.v, tl = takeLeg(w,v);
+    const prev = tl.trailer_id;
+    if (vals.sub==="__BOBTAIL__"){
+      tl.intended_trailer = prev; tl.trailer_id = null; tl.bobtail = true;
+      v.pickup_not_taken = true;
+      log("act","<b>DECLARE_TAKE_LEG_CHANGE</b> — leaving bobtail. <b>"+
+        (prev?w.trailers[prev].number:"—")+"</b> stays, preload intact, still aging.");
+    } else {
+      const sub = w.trailers[vals.sub];
+      tl.trailer_id = sub.id; v.substituted = true;
+      if (hasFreight(w,sub.id))
+        log("dev","<b>SUBSTITUTE_CARRIES_FREIGHT</b> — "+sub.number+
+          " carries another party's freight. Supervisor confirmation was required.");
+      log("act","<b>DECLARE_TAKE_LEG_CHANGE</b> — TAKE leg amended to <b>"+sub.number+
+        "</b>. Logged against both trailers; not an exception.");
+    }
+  },
+  supIf(w,c,vals){
+    /* supervisor confirmation only when the substitute carries freight (§5.1) */
+    return vals && vals.sub && vals.sub!=="__BOBTAIL__" && hasFreight(w, vals.sub);
+  }
+},
+
+/* ---------------- 5.2 Yard movement ------------------------------------ */
+ASSIGN_DOCK:{
+  label:"Assign dock", on:"trailer", actor:"Dispatcher", ref:"model §5.2 · §2.14",
+  gate(w,c){
+    const t = c.t;
+    if (!t) return [H(CLS.STRUCTURAL,"No trailer in context")];
+    if (t.destination==="DOCK_ASSIGNED") return [H(CLS.STRUCTURAL,"A dock is already held")];
+    if (t.destination!=="AWAITING_ASSIGNMENT")
+      return [H(CLS.STRUCTURAL,"Nothing to assign to yet — no destination is being sought")];
+    const f = svc(w,t);
+    if (!Object.values(w.docks).some(d => d.state==="FREE"))
+      f.push(D(CLS.PHYSICAL,"No dock is free"));
+    return f;
+  },
+  form(w){ return [{k:"dock", label:"Dock", type:"select",
+    options: Object.values(w.docks).filter(d => d.state==="FREE").map(d => [d.id, "Dock "+d.id])}]; },
+  apply(w,c,vals){
+    const t = c.t, d = w.docks[vals.dock];
+    d.state = "HELD"; d.holder = t.id;
+    w.assignments.push({id:"DA"+(w.seq++), trailer_id:t.id, dock:d.id, state:"HELD", at:w.clock});
+    t.destination = "DOCK_ASSIGNED"; t.requested_destination = "DOCK "+d.id;
+    log("act","<b>ASSIGN_DOCK</b> — dock "+d.id+" <b>HELD</b>; <b>destination → DOCK_ASSIGNED</b>.");
+    if (w.config.auto_create_move_on_dock_assignment && !t.tractor && onSite(t) && !openMove(w,t.id)){
+      w.moves.push({id:"MV"+(w.seq++), trailer_id:t.id, requested_destination:"DOCK "+d.id,
+        state:"PENDING", at:w.clock});
+      log("sys","Facility is configured for automatic move creation — <b>MoveTask PENDING</b> with no human (§2.11).");
+    }
+    if (t.tractor) log("sys","Tractor attached: no move task. The driver is told where to go (§3.5).");
+  }
+},
+
+RELEASE_DOCK:{
+  label:"Release dock", on:"trailer", actor:"Dispatcher", ref:"model §5.2",
+  gate(w,c){
+    if (!c.t) return [H(CLS.STRUCTURAL,"No trailer in context")];
+    if (!heldAssign(w,c.t.id)) return [H(CLS.STRUCTURAL,"No dock is held")];
+    return [];
+  },
+  form(){ return [{k:"reason", label:"Reason", type:"select", options:[
+    ["REASSIGNED","Reassigned"],["NO_SHOW","No-show"],["DOCK_OOS","Dock out of service"]]}]; },
+  apply(w,c,vals){
+    const a = heldAssign(w,c.t.id);
+    a.state = "RELEASED"; a.release_reason = vals.reason;
+    w.docks[a.dock].state = "FREE"; w.docks[a.dock].holder = null;
+    c.t.destination = "AWAITING_ASSIGNMENT"; c.t.requested_destination = null;
+    log("act","<b>RELEASE_DOCK</b> — dock "+a.dock+" freed ("+vals.reason+
+      "); back to <b>AWAITING_ASSIGNMENT</b>.");
+  }
+},
+
+ASSIGN_YARD:{
+  label:"Assign yard", on:"trailer", actor:"Dispatcher", ref:"model §5.2 (§9 #8)",
+  gate(w,c){
+    const t = c.t;
+    if (!t) return [H(CLS.STRUCTURAL,"No trailer in context")];
+    if (t.destination==="YARD_ASSIGNED") return [H(CLS.STRUCTURAL,"Already going to the yard")];
+    if (t.destination!=="AWAITING_ASSIGNMENT")
+      return [H(CLS.STRUCTURAL,"No destination is being sought")];
+    return svc(w,t);
+  },
+  form(w){ return [{k:"spot", label:"Specific spot (optional — the spotter may choose)",
+    type:"select", options:[["", "Spotter's choice"]].concat(
+      Object.values(w.spots).filter(s => !s.occupants.length).map(s => ["SPOT "+s.id,"Spot "+s.id]))
+      .concat(Object.values(w.lots).map(l => ["LOT "+l.id, l.inside_fence?"Inside lot":"Outside lot"]))}]; },
+  apply(w,c,vals){
+    c.t.destination = "YARD_ASSIGNED";
+    c.t.requested_destination = vals.spot || "YARD";
+    log("act","<b>ASSIGN_YARD</b> — <b>destination → YARD_ASSIGNED</b>"+
+      (vals.spot ? " ("+vals.spot+")" : ", spot left to the spotter")+".");
+  }
+},
+
+DROP_TRAILER:{
+  label:"Drop trailer", on:"trailer", actor:"Driver", ref:"model §5.2 — the handoff",
+  gate(w,c){
+    const t = c.t;
+    if (!t) return [H(CLS.STRUCTURAL,"No trailer in context")];
+    if (!t.tractor) return [H(CLS.STRUCTURAL,"No tractor attached")];
+    if (!["DOCK","YARD_SPOT","LOT"].includes(t.position))
+      return [H(CLS.PHYSICAL,"Drop happens at a dock or a yard spot")];
+    return [];
+  },
+  apply(w,c){
+    const t = c.t;
+    t.tractor = false;
+    if (t.position!=="DOCK" && t.destination!=="DOCK_ASSIGNED"){
+      t.destination = "AWAITING_ASSIGNMENT";
+      log("act","<b>DROP_TRAILER</b> — tractor detached. Yard-team responsibility now; "+
+        "<b>destination → AWAITING_ASSIGNMENT</b>, move tasks become possible.");
+      log("sys","<b>DROPPED_NO_DESTINATION</b> will now age with nobody waiting on it — "+
+        "the quiet risk flows §5 names.");
+    } else {
+      log("act","<b>DROP_TRAILER</b> — tractor detached at its destination.");
+    }
+  }
+},
+
+HOOK_TRAILER:{
+  label:"Hook trailer", on:"trailer", actor:"Driver", ref:"model §5.2",
+  gate(w,c){
+    const t = c.t;
+    if (!t) return [H(CLS.STRUCTURAL,"No trailer in context")];
+    if (t.tractor) return [H(CLS.STRUCTURAL,"A tractor is already attached")];
+    if (!onSite(t) && t.position!=="LOT") return [H(CLS.PHYSICAL,"Trailer is not here")];
+    const v = c.v;
+    const tl = v && takeLeg(w,v);
+    if (!tl || tl.trailer_id!==t.id)
+      return [H(CLS.STRUCTURAL,"This trailer is not on a TAKE leg")];
+    const f = [];
+    if (v.presence!=="ON_SITE") f.push(D(CLS.PHYSICAL, WHY.NOT_ADMITTED));
+    if (openSession(w,t.id)) f.push(D(CLS.PHYSICAL, WHY.SESSION_OPEN));
+    if (openMove(w,t.id)) f.push(D(CLS.PHYSICAL,"A move is in progress"));
+    f.push(...svc(w,t));
+    return f;
+  },
+  apply(w,c){
+    const t = c.t;
+    t.tractor = true;
+    const mv = openMove(w,t.id);
+    if (mv){ mv.state = "CANCELLED"; log("sys","Pending move task cancelled — a hooked trailer needs none."); }
+    log("act","<b>HOOK_TRAILER</b> — tractor attached. <b>TRACTOR_ATTACHED</b>; no move task from here.");
+  }
+},
+
+/* ENGINE ACTION — finding F10.
+   §5 has no action that changes the position of a trailer with a tractor
+   attached. DRIVER_SELF was deleted because a driver "needs a destination, not
+   a task", but nothing then records him arriving at it. Flows 1, 2, 3 and 5 and
+   stress tests 1-vi, 1-x and 12 cannot be walked without something here, so the
+   bench supplies it and marks it as its own. */
+DRIVER_POSITIONS:{
+  label:"Driver spots it himself", on:"trailer", actor:"Driver",
+  engine:true, ref:"ENGINE — §5 names no such action (F10)",
+  gate(w,c){
+    const t = c.t;
+    if (!t) return [H(CLS.STRUCTURAL,"No trailer in context")];
+    if (!t.tractor) return [H(CLS.STRUCTURAL,"No tractor attached — this is yard-team work")];
+    const v = c.v;
+    if (v && !["ON_SITE","AUTHORIZED_TO_DEPART"].includes(v.presence))
+      return [D(CLS.PHYSICAL, WHY.NOT_ADMITTED)];
+    const f = [];
+    const authorized = v && v.presence==="AUTHORIZED_TO_DEPART";
+    if (!authorized && t.destination==="NONE") f.push(D(CLS.DATA, WHY.NO_DEST));
+    if (!authorized && atDestination(w,t)) f.push(H(CLS.STRUCTURAL,"Already at its destination"));
+    const s = openSession(w,t.id);
+    if (s) f.push(D(CLS.PHYSICAL, s.state==="ACTIVE" ? WHY.SESSION_ACTIVE : WHY.SESSION_OPEN));
+    return f;
+  },
+  form(w,c){
+    const t = c.t, v = c.v;
+    const opts = [];
+    if (t.requested_destination && t.requested_destination!=="YARD")
+      opts.push([t.requested_destination.startsWith("DOCK")||t.requested_destination.startsWith("SPOT")||
+        t.requested_destination.startsWith("LOT") ? t.requested_destination :
+        "SPOT "+t.requested_destination, "Where he was told to go"]);
+    Object.values(w.docks).forEach(d => opts.push(["DOCK "+d.id,"Dock "+d.id]));
+    Object.values(w.spots).forEach(s => opts.push(["SPOT "+s.id,"Spot "+s.id +
+      (s.occupants.length?" (occupied)":"")]));
+    Object.values(w.lots).forEach(l => opts.push(["LOT "+l.id,
+      l.inside_fence?"Inside lot":"Outside lot"]));
+    if (v && v.presence==="AUTHORIZED_TO_DEPART") opts.unshift(["GATE_OUT","The exit lane"]);
+    return [{k:"where", label:"Where the driver puts it", type:"select", options:opts}];
+  },
+  apply(w,c,vals){
+    const t = c.t;
+    if (vals.where==="GATE_OUT"){
+      releasePosition(w,t); t.position = "AT_GATE_OUT";
+      log("act","Driver pulls off and takes it to the exit lane — <b>position → AT_GATE_OUT</b>.");
+      return;
+    }
+    placeAt(w,t,vals.where);
+    if (t.position==="DOCK"){
+      const a = heldAssign(w,t.id);
+      if (a && a.dock===t.dock){ a.state="FULFILLED"; }
+      t.stay = {dock:t.dock, opened_at:w.clock};
+      w.docks[t.dock].state = "OCCUPIED"; w.docks[t.dock].holder = t.id;
+      if (sensorsLive(w)) w.docks[t.dock].sensor = "OCCUPIED";
+    }
+    log("act","Driver positions the trailer himself — <b>position → "+vals.where+
+      "</b>. <b>No move task exists or ever existed.</b>");
+    log("sys","This step has no action in the catalog. See finding F10.");
+  }
+},
+
+CREATE_MOVE_TASK:{
+  label:"Create move task", on:"trailer", actor:"Dispatcher", ref:"model §5.2 · §3.5",
+  gate(w,c){
+    const t = c.t;
+    if (!t) return [H(CLS.STRUCTURAL,"No trailer in context")];
+    if (t.tractor) return [H(CLS.STRUCTURAL,"Trailer has a driver — it needs a destination, not a task")];
+    if (openMove(w,t.id)) return [D(CLS.PHYSICAL, WHY.MOVE_OPEN)];
+    const f = [];
+    if (!onSite(t) && t.position!=="LOT") f.push(H(CLS.PHYSICAL,"Trailer is not on site"));
+    const v = c.v;
+    if (v && ["AT_FACILITY","AT_GATE"].includes(v.presence)) f.push(D(CLS.PHYSICAL, WHY.NOT_ADMITTED));
+    if (t.destination==="AWAITING_ASSIGNMENT" || t.destination==="NONE")
+      f.push(D(CLS.DATA, WHY.NO_DEST));
+    if (atDestination(w,t)) f.push(H(CLS.STRUCTURAL,"Already at its destination"));
+    const sess = openSession(w,t.id);
+    if (sess) f.push(D(CLS.PHYSICAL, sess.state==="ACTIVE" ? WHY.SESSION_ACTIVE : WHY.SESSION_OPEN));
+    return f;
+  },
+  apply(w,c){
+    const t = c.t;
+    w.moves.push({id:"MV"+(w.seq++), trailer_id:t.id,
+      requested_destination: t.requested_destination || (t.destination==="YARD_ASSIGNED"?"YARD":"—"),
+      state:"PENDING", at:w.clock});
+    log("act","<b>CREATE_MOVE_TASK</b> — <b>PENDING</b> to "+
+      (t.requested_destination||"the yard")+". Every row in this queue is yard-team work.");
+  }
+},
+
+ASSIGN_MOVE_TASK:{
+  label:"Assign move to a spotter", on:"trailer", actor:"Dispatcher", ref:"model §5.2",
+  gate(w,c){
+    const m = c.t && openMove(w,c.t.id);
+    if (!m) return [H(CLS.STRUCTURAL,"No open move task")];
+    if (m.state!=="PENDING") return [H(CLS.STRUCTURAL,"Already assigned")];
+    return [];
+  },
+  apply(w,c){
+    const m = openMove(w,c.t.id);
+    m.state = "ASSIGNED"; m.assignee = "Spotter 3";
+    log("act","<b>ASSIGN_MOVE_TASK</b> — to Spotter 3.");
+  }
+},
+
+START_MOVE:{
+  label:"Start move", on:"trailer", actor:"Spotter", ref:"model §5.2",
+  gate(w,c){
+    const t = c.t, m = t && openMove(w,t.id);
+    if (!m) return [H(CLS.STRUCTURAL,"No open move task")];
+    if (!["PENDING","ASSIGNED"].includes(m.state)) return [H(CLS.STRUCTURAL,"Move already started")];
+    const f = [];
+    const sess = openSession(w,t.id);
+    if (sess && sess.state==="ACTIVE") f.push(D(CLS.PHYSICAL, WHY.SESSION_ACTIVE));
+    else if (sess) f.push(D(CLS.PHYSICAL, WHY.SESSION_OPEN));
+    return f;
+  },
+  apply(w,c){
+    const t = c.t, m = openMove(w,t.id);
+    m.state = "IN_PROGRESS"; m.origin = t.position;
+    if (t.position==="DOCK" && t.stay){
+      log("sys","DockStay on dock "+t.dock+" closed on move start.");
+      w.docks[t.dock].state = "FREE"; w.docks[t.dock].holder = null;
+      if (sensorsLive(w)) w.docks[t.dock].sensor = "VACANT";
+      t.stay = null;
+    }
+    releasePosition(w,t);
+    t.position = "IN_MOTION";
+    log("act","<b>START_MOVE</b> — <b>position → IN_MOTION</b>; origin released.");
+  }
+},
+
+COMPLETE_MOVE:{
+  label:"Complete move", on:"trailer", actor:"Spotter", ref:"model §5.2 (§9 #8)",
+  gate(w,c){
+    const m = c.t && openMove(w,c.t.id);
+    if (!m) return [H(CLS.STRUCTURAL,"No move in progress")];
+    if (m.state!=="IN_PROGRESS") return [H(CLS.STRUCTURAL,"Move has not started")];
+    return [];
+  },
+  form(w,c){
+    const m = openMove(w,c.t.id);
+    const req = m.requested_destination||"";
+    const sensorAuto = sensorsLive(w) && req.startsWith("DOCK ") &&
+      w.docks[req.slice(5)] && w.docks[req.slice(5)].sensor==="OCCUPIED";
+    if (sensorAuto) return [];
+    const opts = Object.values(w.docks).map(d => ["DOCK "+d.id, "Dock "+d.id +
+        (d.state==="HELD" && d.holder!==c.t.id ? " (held for another)" : "")])
+      .concat(Object.values(w.spots).map(s => ["SPOT "+s.id, "Spot "+s.id +
+        (s.occupants.length ? " (occupied)" : "")]))
+      .concat(Object.values(w.lots).map(l => ["LOT "+l.id,
+        (l.inside_fence?"Inside lot":"Outside lot")+" — always available"]));
+    return [{k:"actual", label:"Where did it actually go? (required — there is no “moved, location unknown”)",
+      type:"select", options:opts, def:req}];
+  },
+  apply(w,c,vals){
+    const t = c.t, m = openMove(w,t.id);
+    let actual = vals.actual;
+    if (!actual){ actual = m.requested_destination; log("sys","Dock sensor confirmed occupancy — no manual report needed (§2.9)."); }
+    m.state = "COMPLETED"; m.actual_destination = actual;
+    const wasOutside = t.lot && w.lots[t.lot] && !w.lots[t.lot].inside_fence;
+    placeAt(w,t,actual);
+    t.last_variance = !!(m.requested_destination && actual!==m.requested_destination);
+    if (t.last_variance) log("dev","<b>PLACEMENT_VARIANCE</b> — asked for "+
+      m.requested_destination+", reported "+actual+". A normal reported outcome, not an exception.");
+    log("act","<b>COMPLETE_MOVE</b> — <b>position → "+actual+"</b>.");
+    if (t.position==="DOCK"){
+      const a = heldAssign(w,t.id);
+      if (a && a.dock===t.dock){ a.state = "FULFILLED"; log("sys","<b>DockAssignment → FULFILLED</b>."); }
+      t.stay = {dock:t.dock, opened_at:w.clock};
+      if (sensorsLive(w)) w.docks[t.dock].sensor = "OCCUPIED";
+      w.docks[t.dock].state = "OCCUPIED"; w.docks[t.dock].holder = t.id;
+    }
+    const nowInside = !(t.lot && !w.lots[t.lot].inside_fence);
+    if (wasOutside && nowInside){
+      const v = visitOfTrailer(w,t.id);
+      if (v){ v.presence = "ON_SITE"; if (v.on_site_since==null) v.on_site_since = w.clock;
+        log("sys","The move crossed the fence — <b>presence → ON_SITE</b>, presence clock started."); }
+      else log("dev","The move crossed the fence, but this trailer has no visit — so there is no "+
+        "<b>presence</b> to change. Finding F8.");
+    }
+  }
+},
+
+CANCEL_MOVE:{
+  label:"Cancel move", on:"trailer", actor:"Dispatcher", ref:"model §5.2",
+  gate(w,c){
+    const m = c.t && openMove(w,c.t.id);
+    if (!m) return [H(CLS.STRUCTURAL,"No open move task")];
+    return [];
+  },
+  form(w,c){
+    const m = openMove(w,c.t.id);
+    if (m.state!=="IN_PROGRESS") return [];
+    return [{k:"actual", label:"Reported location (the trailer is in motion)", type:"select",
+      options: Object.values(w.spots).map(s => ["SPOT "+s.id,"Spot "+s.id])
+        .concat(Object.values(w.lots).map(l => ["LOT "+l.id, l.inside_fence?"Inside lot":"Outside lot"]))
+        .concat([["DOCK "+(m.origin==="DOCK"?"":"")+"", "Back at origin"]].filter(x=>false))}];
+  },
+  apply(w,c,vals){
+    const t = c.t, m = openMove(w,t.id);
+    m.state = "CANCELLED";
+    if (t.position==="IN_MOTION") placeAt(w,t, vals.actual || "LOT OUTSIDE");
+    log("act","<b>CANCEL_MOVE</b> — abandoned; reservations released.");
+  }
+},
+
+/* ---------------- 5.3 Dock --------------------------------------------- */
+OPEN_SESSION:{
+  label:"Open session", on:"trailer", actor:"Dock lead", ref:"model §5.3 (§9 #37)",
+  gate(w,c){
+    const t = c.t;
+    if (!t) return [H(CLS.STRUCTURAL,"No trailer in context")];
+    if (t.position!=="DOCK") return [H(CLS.PHYSICAL,"Not at a dock")];
+    if (openSession(w,t.id)) return [H(CLS.STRUCTURAL,"A session is already open on this stay")];
+    const rows = rowsOf(w,t.id);
+    const eligible = rows.filter(r =>
+      (r.direction==="INBOUND" && r.link_state==="ON_BOARD") ||
+      (r.direction==="OUTBOUND" && ["ASSIGNED","PART_LOADED"].includes(r.link_state)));
+    if (!eligible.length) return [H(CLS.DATA,"Nothing aboard or assigned to work")];
+    return svc(w,t);
+  },
+  apply(w,c){
+    const t = c.t;
+    const rows = rowsOf(w,t.id);
+    const inbound = rows.filter(r => r.direction==="INBOUND" && r.link_state==="ON_BOARD");
+    const outbound = rows.filter(r => r.direction==="OUTBOUND" &&
+      ["ASSIGNED","PART_LOADED"].includes(r.link_state));
+    const dir = inbound.length ? "UNLOAD" : "LOAD";
+    const set = (dir==="UNLOAD" ? inbound : outbound);
+    const s = {id:"S"+(w.seq++), trailer_id:t.id, dock:t.dock, direction:dir, state:"OPEN",
+      shipments:set.map(r => ({shipment_id:r.shipment_id, joined_at:w.clock, outcome:null})),
+      at:w.clock};
+    w.sessions.push(s);
+    log("act","<b>OPEN_SESSION</b> ("+dir+") — <b>pre-populated</b> with "+set.length+
+      " shipment"+(set.length===1?"":"s")+". Remove what stays aboard rather than adding what to work.");
+  }
+},
+
+ADD_SHIPMENT_TO_SESSION:{
+  label:"Add shipment to session", on:"trailer", actor:"Dock lead",
+  ref:"model §5.3 — exception path (§9 #17)",
+  gate(w,c){
+    const s = c.t && openSession(w,c.t.id);
+    if (!s) return [H(CLS.STRUCTURAL,"No open session")];
+    if (s.state==="ACTIVE" && !w.config.allow_add_shipment_to_active_session)
+      return [D(CLS.PHYSICAL, WHY.SESSION_ACTIVE)];
+    const cand = candidatesFor(w,c.t,s);
+    if (!cand.length) return [H(CLS.DATA,"No eligible shipment outside the set")];
+    return [];
+  },
+  form(w,c){
+    const s = openSession(w,c.t.id);
+    return [{k:"sh", label:"Shipment", type:"select",
+      options: candidatesFor(w,c.t,s).map(r => [r.shipment_id,
+        r.shipment_id+" · "+r.direction.toLowerCase()])}];
+  },
+  apply(w,c,vals){
+    const s = openSession(w,c.t.id);
+    s.shipments.push({shipment_id:vals.sh, joined_at:w.clock, outcome:null});
+    log("act","<b>ADD_SHIPMENT_TO_SESSION</b> — "+vals.sh+" joined at "+hhmm(w.clock)+
+      ". Its elapsed time runs from <b>joined_at</b>, not session start.");
+  }
+},
+
+REMOVE_SHIPMENT_FROM_SESSION:{
+  label:"Remove shipment from session", on:"trailer", actor:"Dock lead", ref:"model §5.3",
+  gate(w,c){
+    const s = c.t && openSession(w,c.t.id);
+    if (!s) return [H(CLS.STRUCTURAL,"No open session")];
+    if (s.state!=="OPEN") return [H(CLS.PHYSICAL,"Work has started")];
+    if (s.shipments.length<1) return [H(CLS.STRUCTURAL,"Nothing in the set")];
+    return [];
+  },
+  form(w,c){
+    const s = openSession(w,c.t.id);
+    return [{k:"sh", label:"Shipment staying aboard", type:"select",
+      options: s.shipments.map(x => [x.shipment_id, x.shipment_id])}];
+  },
+  apply(w,c,vals){
+    const s = openSession(w,c.t.id);
+    s.shipments = s.shipments.filter(x => x.shipment_id!==vals.sh);
+    log("act","<b>REMOVE_SHIPMENT_FROM_SESSION</b> — "+vals.sh+" excluded; it stays <b>ON_BOARD</b>.");
+    const v = visitOfTrailer(w,c.t.id);
+    const tl = v && takeLeg(w,v);
+    if (s.direction==="UNLOAD" && tl){
+      tl.expected_residual_shipment_ids = (tl.expected_residual_shipment_ids||[]).concat([vals.sh]);
+      log("sys","Added to the TAKE leg's <b>expected_residual_shipment_ids</b> — this is what makes "+
+        "the LTL departure a <b>PARTIAL_RECEIPT</b> rather than a discrepancy (§2.5).");
+    } else if (s.direction==="UNLOAD"){
+      log("dev","No TAKE leg to offer the residual list to. The freight stays aboard with nothing "+
+        "declaring it expected — <b>UNEXPECTED_RESIDUAL</b> at the next authorization.");
+    }
+  }
+},
+
+START_SESSION:{
+  label:"Start session", on:"trailer", actor:"Dock crew", ref:"model §5.3",
+  gate(w,c){
+    const s = c.t && openSession(w,c.t.id);
+    if (!s) return [H(CLS.STRUCTURAL,"No open session")];
+    if (s.state!=="OPEN") return [H(CLS.STRUCTURAL,"Already started")];
+    if (!s.shipments.length) return [D(CLS.DATA, WHY.NO_SHIPMENT_IN_SESSION)];
+    return [];
+  },
+  apply(w,c){
+    const s = openSession(w,c.t.id);
+    s.state = "ACTIVE"; s.started_at = w.clock;
+    s.shipments.forEach(x => {
+      const r = w.loads.find(r => r.trailer_id===c.t.id && r.shipment_id===x.shipment_id);
+      r.link_state = s.direction==="LOAD" ? "LOADING" : "UNLOADING";
+      w.shipments[x.shipment_id].status = s.direction==="LOAD" ? "LOADING" : "UNLOADING";
+    });
+    log("act","<b>START_SESSION</b> — rows → <b>"+(s.direction==="LOAD"?"LOADING":"UNLOADING")+
+      "</b>; load state <b>IN_WORK</b>.");
+  }
+},
+
+END_SESSION:{
+  label:"End session", on:"trailer", actor:"Dock lead",
+  ref:"model §5.3 — a reconciliation, not a button",
+  gate(w,c){
+    const s = c.t && openSession(w,c.t.id);
+    if (!s) return [H(CLS.STRUCTURAL,"No session to end")];
+    if (s.state!=="ACTIVE") return [H(CLS.PHYSICAL,"Work has not started")];
+    return [];
+  },
+  reconcile:true,
+  apply(w,c,vals){
+    const s = openSession(w,c.t.id), t = c.t;
+    s.state = "ENDED"; s.ended_at = w.clock;
+    let closed = 0;
+    s.shipments.forEach(x => {
+      const out = vals[x.shipment_id];
+      x.outcome = out;
+      const r = w.loads.find(r => r.trailer_id===t.id && r.shipment_id===x.shipment_id);
+      const sh = w.shipments[x.shipment_id];
+      if (out==="LOADED"){ r.link_state = "ON_BOARD"; sh.status = "LOADED"; }
+      else if (out==="NOT_LOADED"){
+        /* the outcome vocabulary is direction-blind, but an inbound row has no
+           ASSIGNED phase (glossary §5.2) — untouched inbound freight is aboard. */
+        if (r.direction==="INBOUND"){ r.link_state = "ON_BOARD"; sh.status = "ARRIVED"; }
+        else { r.link_state = "ASSIGNED"; sh.status = "ASSIGNED"; }
+      }
+      else if (out==="PARTIAL"){ r.link_state = "PART_LOADED"; sh.status = "LOADING"; }
+      else if (out==="UNLOADED"){ w.loads = w.loads.filter(z => z!==r); sh.status = "RECEIVED"; closed++; }
+    });
+    const outcomes = s.shipments.map(x => x.shipment_id+" → "+x.outcome).join(", ");
+    log("act","<b>END_SESSION</b> — per-shipment outcomes recorded: "+outcomes+
+      ". The event log is the only durable record of this.");
+    if (!rowsOf(w,t.id).length){
+      t.empty_verification = "VERIFIED_EMPTY";
+      log("sys","No rows remain — <b>empty_verification → VERIFIED_EMPTY</b>.");
+    }
+    if (s.shipments.some(x => x.outcome==="PARTIAL"))
+      log("dev","<b>PART_LOAD_HELD</b> — a part-loaded row now blocks fill-complete, sealing and departure.");
+  }
+},
+
+CANCEL_SESSION:{
+  label:"Cancel session", on:"trailer", actor:"Dock lead / supervisor", ref:"model §5.3 (§9 #14)",
+  gate(w,c){
+    const s = c.t && openSession(w,c.t.id);
+    if (!s) return [H(CLS.STRUCTURAL,"No open session")];
+    if (s.state==="ACTIVE") return needRole(w, SUP);
+    return [];
+  },
+  reconcileIfActive:true,
+  apply(w,c,vals){
+    const s = openSession(w,c.t.id);
+    const wasActive = s.state==="ACTIVE";
+    s.state = "CANCELLED";
+    if (wasActive){
+      s.shipments.forEach(x => {
+        const out = vals[x.shipment_id] || "NOT_LOADED";
+        x.outcome = out;
+        const r = w.loads.find(r => r.trailer_id===c.t.id && r.shipment_id===x.shipment_id);
+        const sh = w.shipments[x.shipment_id];
+        if (out==="LOADED"){ r.link_state="ON_BOARD"; sh.status="LOADED"; }
+        else if (out==="PARTIAL"){ r.link_state="PART_LOADED"; sh.status="LOADING"; }
+        else if (out==="UNLOADED"){ w.loads = w.loads.filter(z=>z!==r); sh.status="RECEIVED"; }
+        else { r.link_state = s.direction==="LOAD" ? "ASSIGNED" : "ON_BOARD";
+               sh.status = s.direction==="LOAD" ? "ASSIGNED" : "ARRIVED"; }
+      });
+    }
+    log("act","<b>CANCEL_SESSION</b> — same per-shipment reconciliation as END_SESSION; reason code required.");
+  }
+},
+
+DECLARE_FILL_COMPLETE:{
+  label:"Declare fill complete", on:"trailer", actor:"Dock lead (role-gated)",
+  ref:"model §5.3 (§9 #13)",
+  gate(w,c){
+    const t = c.t;
+    if (!t) return [H(CLS.STRUCTURAL,"No trailer in context")];
+    if (t.fill==="COMPLETE") return [H(CLS.STRUCTURAL,"Already declared complete")];
+    if (!hasFreight(w,t.id)) return [H(CLS.DATA,"No freight aboard — not a candidate")];
+    const f = svc(w,t);
+    const s = openSession(w,t.id);
+    if (s) f.push(D(CLS.PHYSICAL, s.state==="ACTIVE" ? WHY.SESSION_ACTIVE : WHY.SESSION_OPEN));
+    if (rowsOf(w,t.id).some(r => r.link_state==="PART_LOADED")) f.push(D(CLS.DATA, WHY.PART_LOADED));
+    f.push(...needRole(w, w.config.roles_can_declare_fill_complete));
+    return f;
+  },
+  apply(w,c){
+    c.t.fill = "COMPLETE";
+    log("act","<b>DECLARE_FILL_COMPLETE</b> — <b>fill_declaration → COMPLETE</b>. Gates sealing and departure.");
+  }
+},
+
+REOPEN_FILL:{
+  label:"Reopen fill", on:"trailer", actor:"Dock lead", ref:"model §5.3",
+  gate(w,c){
+    const t = c.t;
+    if (!t) return [H(CLS.STRUCTURAL,"No trailer in context")];
+    if (t.fill!=="COMPLETE") return [H(CLS.STRUCTURAL,"Nothing to reopen")];
+    if (t.sealed) return [D(CLS.DATA, WHY.SEALED)];
+    return [];
+  },
+  form(){ return [{k:"reason", label:"Reason", type:"text", def:"More freight found for this load"}]; },
+  apply(w,c,vals){
+    c.t.fill = "OPEN";
+    log("act","<b>REOPEN_FILL</b> — back to <b>OPEN</b> ("+vals.reason+").");
+  }
+},
+
+PULL_FROM_DOCK:{
+  label:"Pull from dock", on:"trailer", actor:"Dock lead", ref:"model §5.3",
+  gate(w,c){
+    const t = c.t;
+    if (!t) return [H(CLS.STRUCTURAL,"No trailer in context")];
+    if (t.position!=="DOCK") return [H(CLS.PHYSICAL,"Not at a dock")];
+    const s = openSession(w,t.id);
+    if (s) return [D(CLS.PHYSICAL, s.state==="ACTIVE" ? WHY.SESSION_ACTIVE : WHY.SESSION_OPEN)];
+    if (t.tractor) return [H(CLS.STRUCTURAL,"The driver will pull it himself — no task needed")];
+    if (openMove(w,t.id)) return [D(CLS.PHYSICAL, WHY.MOVE_OPEN)];
+    return [];
+  },
+  form(w){ return [{k:"dest", label:"Where to", type:"select",
+    options: Object.values(w.spots).filter(s=>!s.occupants.length).map(s => ["SPOT "+s.id,"Spot "+s.id])
+      .concat(Object.values(w.lots).map(l => ["LOT "+l.id, l.inside_fence?"Inside lot":"Outside lot"]))}]; },
+  apply(w,c,vals){
+    const t = c.t;
+    t.destination = "YARD_ASSIGNED"; t.requested_destination = vals.dest;
+    w.moves.push({id:"MV"+(w.seq++), trailer_id:t.id, requested_destination:vals.dest,
+      state:"PENDING", at:w.clock});
+    log("act","<b>PULL_FROM_DOCK</b> — move task created; the DockStay closes on <b>START_MOVE</b>.");
+  }
+},
+
+/* ---------------- 5.4 Shipment ----------------------------------------- */
+ASSIGN_SHIPMENT:{
+  label:"Assign shipment", on:"trailer", actor:"Planner",
+  ref:"model §5.4 — exception path (§9 #37)",
+  gate(w,c){
+    const t = c.t;
+    if (!t) return [H(CLS.STRUCTURAL,"No trailer in context")];
+    const rows = rowsOf(w,t.id);
+    if (rows.some(r => r.direction==="INBOUND"))
+      return [H(CLS.STRUCTURAL,"Trailer holds inbound freight")];   /* matrix §1.1: hidden */
+    if (t.position==="OFF_SITE") return [H(CLS.PHYSICAL,"Trailer is not on site")];
+    if (t.position==="IN_MOTION") return [H(CLS.PHYSICAL,"Trailer is in motion")];
+    const v = c.v;
+    if (v && ["AT_FACILITY","AT_GATE"].includes(v.presence))
+      return [H(CLS.PHYSICAL,"At the facility but not through the gate")];
+    if (t.intake==="AWAITING_INTAKE") return [D(CLS.DATA,"Take the trailer in first")];
+    const f = svc(w,t);
+    if (t.fill==="COMPLETE") f.push(D(CLS.DATA, WHY.FILL_COMPLETE));
+    if (t.empty_verification==="UNVERIFIED") f.push(D(CLS.DATA, WHY.UNVERIFIED));
+    if (w.config.require_readiness_before_assignment && readinessLive(w) && t.readiness!=="READY")
+      f.push(D(CLS.DATA,"Readiness requirements outstanding"));
+    const free = Object.values(w.shipments).filter(s =>
+      s.direction==="OUTBOUND" && s.status==="PLANNED" &&
+      !w.loads.some(r => r.shipment_id===s.id));
+    if (!free.length) f.push(H(CLS.DATA,"No unassigned outbound shipment exists"));
+    return f;
+  },
+  form(w){
+    const free = Object.values(w.shipments).filter(s =>
+      s.direction==="OUTBOUND" && s.status==="PLANNED" && !w.loads.some(r => r.shipment_id===s.id));
+    return [{k:"sh", label:"Shipment", type:"select",
+      options: free.map(s => [s.id, s.id+" · "+s.consignee])}];
+  },
+  apply(w,c,vals){
+    mkLoad(w, vals.sh, c.t.id, "ASSIGNED");
+    w.shipments[vals.sh].status = "ASSIGNED";
+    log("act","<b>ASSIGN_SHIPMENT</b> — row created <b>ASSIGNED</b> for "+vals.sh+".");
+    if (c.t.empty_verification==="CLAIMED_EMPTY")
+      log("dev","<b>UNVERIFIED_ASSIGNMENT</b> — assigned on a driver's claim, never physically checked (§9 #6).");
+  }
+},
+
+UNASSIGN_SHIPMENT:{
+  label:"Unassign shipment", on:"trailer", actor:"Planner", ref:"model §5.4 (§9 #5)",
+  gate(w,c){
+    if (!c.t) return [H(CLS.STRUCTURAL,"No trailer in context")];
+    const rows = rowsOf(w,c.t.id).filter(r => r.link_state==="ASSIGNED");
+    if (!rows.length) return [H(CLS.STRUCTURAL,"Nothing is unassignable")];
+    const s = openSession(w,c.t.id);
+    if (s && s.state==="ACTIVE") return [D(CLS.PHYSICAL, WHY.SESSION_ACTIVE)];
+    return [];
+  },
+  form(w,c){
+    return [{k:"sh", label:"Shipment", type:"select",
+      options: rowsOf(w,c.t.id).filter(r=>r.link_state==="ASSIGNED")
+        .map(r => [r.shipment_id, r.shipment_id])}];
+  },
+  apply(w,c,vals){
+    w.loads = w.loads.filter(r => !(r.trailer_id===c.t.id && r.shipment_id===vals.sh));
+    w.shipments[vals.sh].status = "PLANNED";
+    log("act","<b>UNASSIGN_SHIPMENT</b> — row deleted; "+vals.sh+" back to <b>PLANNED</b>.");
+  }
+},
+
+SEAL_TRAILER:{
+  label:"Seal trailer", on:"trailer", actor:"Dock lead", ref:"model §5.4",
+  gate(w,c){
+    const t = c.t;
+    if (!t) return [H(CLS.STRUCTURAL,"No trailer in context")];
+    if (t.sealed) return [H(CLS.STRUCTURAL,"Already sealed")];
+    if (!rowsOf(w,t.id).some(r => r.link_state==="ON_BOARD"))
+      return [H(CLS.DATA,"No freight aboard — not a sealing candidate")];
+    const f = svc(w,t);
+    if (t.fill!=="COMPLETE") f.push(D(CLS.DATA, WHY.FILL_OPEN));
+    if (rowsOf(w,t.id).some(r => r.link_state==="PART_LOADED")) f.push(D(CLS.DATA, WHY.PART_LOADED));
+    const s = openSession(w,t.id);
+    if (s && s.state==="ACTIVE") f.push(D(CLS.PHYSICAL, WHY.SESSION_ACTIVE));
+    return f;
+  },
+  apply(w,c){
+    const t = c.t;
+    t.sealed = true; t.seal = "SL" + (400000 + Math.floor(Math.random()*99999));
+    rowsOf(w,t.id).filter(r => r.direction==="OUTBOUND" && r.link_state==="ON_BOARD")
+      .forEach(r => { w.shipments[r.shipment_id].status = "STAGED"; });
+    if (t.staged_since==null) t.staged_since = w.clock;
+    log("act","<b>SEAL_TRAILER</b> — seal "+t.seal+" recorded; outbound shipments <b>STAGED</b>.");
+  }
+},
+
+BREAK_SEAL:{
+  label:"Break seal", on:"trailer", actor:"Dock lead", ref:"model §5.4",
+  gate(w,c){
+    if (!c.t) return [H(CLS.STRUCTURAL,"No trailer in context")];
+    if (!c.t.sealed) return [H(CLS.STRUCTURAL,"Nothing to break")];
+    return [];
+  },
+  form(){ return [{k:"reason", label:"Reason", type:"text", def:"Adding freight to this load"}]; },
+  apply(w,c,vals){
+    c.t.sealed = false;
+    rowsOf(w,c.t.id).filter(r => r.direction==="OUTBOUND" && r.link_state==="ON_BOARD")
+      .forEach(r => { w.shipments[r.shipment_id].status = "LOADED"; });
+    log("act","<b>BREAK_SEAL</b> — cleared ("+vals.reason+"); shipments back to <b>LOADED</b>.");
+  }
+},
+
+/* ---------------- 5.5 Trailer ------------------------------------------ */
+MARK_OUT_OF_SERVICE:{
+  label:"Mark out of service", on:"trailer", actor:"Maintenance", ref:"model §5.5",
+  gate(w,c){
+    if (!c.t) return [H(CLS.STRUCTURAL,"No trailer in context")];
+    if (c.t.service==="OUT_OF_SERVICE") return [H(CLS.STRUCTURAL,"Already out of service")];
+    return [];
+  },
+  apply(w,c){
+    c.t.service = "OUT_OF_SERVICE";
+    log("act","<b>MARK_OUT_OF_SERVICE</b> — blocks new assignment and TAKE legs.");
+    if (openSession(w,c.t.id))
+      log("sys","An active session is deliberately <b>not</b> cancelled (§5.5, stress test 21). "+
+        "The freight is physically half-moved; ending the work is a human decision.");
+  }
+},
+
+RETURN_TO_SERVICE:{
+  label:"Return to service", on:"trailer", actor:"Maintenance", ref:"model §5.5",
+  gate(w,c){
+    if (!c.t) return [H(CLS.STRUCTURAL,"No trailer in context")];
+    if (c.t.service!=="OUT_OF_SERVICE") return [H(CLS.STRUCTURAL,"Already in service")];
+    return [];
+  },
+  apply(w,c){ c.t.service = "IN_SERVICE"; log("act","<b>RETURN_TO_SERVICE</b>."); }
+},
+
+INTAKE_TRAILER:{
+  label:"Take trailer in", on:"trailer", actor:"Yard team", ref:"model §5.5 · §2.13",
+  gate(w,c){
+    if (!c.t) return [H(CLS.STRUCTURAL,"No trailer in context")];
+    if (c.t.intake!=="AWAITING_INTAKE") return [H(CLS.STRUCTURAL,"Nothing awaiting intake")];
+    return [];
+  },
+  apply(w,c){
+    const t = c.t;
+    t.intake = "TAKEN_IN";
+    t.destination = hasFreight(w,t.id) ? "AWAITING_ASSIGNMENT" : "NONE";
+    log("act","<b>INTAKE_TRAILER</b> — <b>intake_state → TAKEN_IN</b>; a normal on-site asset now. "+
+      "Empty verification is still required before assignment.");
+  }
+},
+
+ADVANCE_READINESS:{
+  label:"Work readiness requirements", on:"trailer", actor:"Wash / maintenance",
+  ref:"model §3.7 — ENGINE: the doc names no action for this",
+  gate(w,c){
+    if (!readinessLive(w)) return [H(CLS.STRUCTURAL,
+      "No readiness requirements configured — the dimension does not exist here")];
+    if (!c.t) return [H(CLS.STRUCTURAL,"No trailer in context")];
+    if (c.t.readiness==="READY") return [H(CLS.STRUCTURAL,"Requirements already met")];
+    if (c.t.intake==="AWAITING_INTAKE") return [D(CLS.DATA,"Take the trailer in first")];
+    return [];
+  },
+  form(w,c){
+    return c.t.readiness==="NOT_READY"
+      ? [] : [{k:"outcome", label:"Outcome", type:"select", options:[
+          ["READY","Requirements met — READY"],
+          ["OUT_OF_SERVICE","Inspection found damage — OUT_OF_SERVICE"]]}];
+  },
+  apply(w,c,vals){
+    const t = c.t;
+    if (t.readiness==="NOT_READY"){
+      t.readiness = "IN_PREP";
+      log("act","<b>readiness → IN_PREP</b> — "+(w.config.readiness_requirements||[]).join(", ")+
+        " being worked.");
+    } else if (vals.outcome==="OUT_OF_SERVICE"){
+      t.readiness = "NOT_READY"; t.service = "OUT_OF_SERVICE";
+      log("act","Inspection found damage — <b>OUT_OF_SERVICE</b>, not READY. The pool count loses it.");
+    } else {
+      t.readiness = "READY";
+      log("act","<b>readiness → READY</b> — in the available pool.");
+    }
+  }
+},
+
+/* ---------------- 5.5 Corrections — supervisor, reason-coded ----------- */
+CORRECT_TRAILER_IDENTITY:{
+  label:"Correct trailer identity", on:"trailer", actor:"Supervisor", tier:"sup", ref:"model §5.5",
+  gate(w,c){
+    if (!c.t) return [H(CLS.STRUCTURAL,"No trailer in context")];
+    const s = openSession(w,c.t.id);
+    const working = rowsOf(w,c.t.id).some(r => ["LOADING","UNLOADING"].includes(r.link_state));
+    const f = [];
+    if ((s && s.state==="ACTIVE") || working) f.push(D(CLS.PHYSICAL, WHY.RENUMBER));
+    f.push(...needRole(w, SUP));
+    return f;
+  },
+  form(w,c){ return [{k:"number", label:"Correct trailer number", type:"text", def:c.t.number}]; },
+  apply(w,c,vals){
+    const old = c.t.number;
+    c.t.number = vals.number;
+    log("act","<b>CORRECT_TRAILER_IDENTITY</b> — renumbered "+old+" → "+vals.number+
+      ". Logged against both numbers.");
+  }
+},
+
+MERGE_TRAILERS:{
+  label:"Merge duplicate records", on:"trailer", actor:"Supervisor", tier:"sup", ref:"model §5.5",
+  gate(w,c){
+    if (!c.t) return [H(CLS.STRUCTURAL,"No trailer in context")];
+    const dupes = Object.values(w.trailers).filter(t =>
+      t.id!==c.t.id && t.number===c.t.number);
+    if (!dupes.length) return [H(CLS.STRUCTURAL,"No duplicate record for this number")];
+    const bothHere = dupes.filter(t => onSite(t)).length && onSite(c.t);
+    const f = [];
+    if (bothHere) f.push(D(CLS.PHYSICAL,"Both records are on site — at most one may be"));
+    f.push(...needRole(w, SUP));
+    return f;
+  },
+  apply(w,c){
+    const dup = Object.values(w.trailers).find(t => t.id!==c.t.id && t.number===c.t.number);
+    dup.retired_into = c.t.id;
+    w.loads.filter(r => r.trailer_id===dup.id).forEach(r => { r.trailer_id = c.t.id; });
+    log("act","<b>MERGE_TRAILERS</b> — "+dup.id+" retired into "+c.t.id+
+      ", never deleted. Its events legitimately happened.");
+  }
+},
+
+CORRECT_DEPARTURE:{
+  label:"Correct departure", on:"visit", actor:"Supervisor", tier:"sup", ref:"model §5.5",
+  gate(w,c){
+    const bad = w.idents.find(i => i.kind==="EXIT" && i.unresolved && i.outcome==="UNDECLARED");
+    if (!bad) return [H(CLS.STRUCTURAL,"No departure is in dispute")];
+    return needRole(w, SUP);
+  },
+  apply(w,c){
+    const i = w.idents.find(x => x.kind==="EXIT" && x.unresolved && x.outcome==="UNDECLARED");
+    const left = w.trailers[i.read_trailer], stayed = w.trailers[i.declared_trailer];
+    i.unresolved = false; i.corrected = true;
+    if (stayed){
+      stayed.position = stayed.prior_position || "YARD_SPOT";
+      stayed.spot = stayed.prior_spot || "B-07";
+      if (stayed.spot && w.spots[stayed.spot]) w.spots[stayed.spot].occupants = [stayed.id];
+      rowsOf(w,stayed.id).filter(r => r.direction==="OUTBOUND").forEach(r => {
+        w.shipments[r.shipment_id].status = stayed.sealed ? "STAGED" : "LOADED";
+      });
+    }
+    if (left){
+      left.position = "OFF_SITE"; left.spot = null; left.dock = null;
+      rowsOf(w,left.id).filter(r => r.direction==="OUTBOUND").forEach(r => {
+        w.shipments[r.shipment_id].status = "DEPARTED";
+      });
+    }
+    log("act","<b>CORRECT_DEPARTURE</b> — "+(left?left.number:"?")+" recorded as departed; "+
+      (stayed?stayed.number:"?")+" restored to the yard with its <b>STAGED</b> preload intact. "+
+      "The original check-out is retained and superseded, never overwritten.");
+  }
+},
+
+ADJUST_STATE:{
+  label:"Adjust state (override)", on:"trailer", actor:"Supervisor", tier:"sup", ref:"model §5.5",
+  gate(w,c){
+    if (!c.t) return [H(CLS.STRUCTURAL,"No trailer in context")];
+    return needRole(w, SUP);
+  },
+  form(w,c){ return [
+    {k:"dim", label:"Dimension", type:"select", options:[
+      ["position","Position"],["destination","Destination"],["fill","Fill declaration"],
+      ["service","Service"],["readiness","Readiness"],["empty_verification","Empty verification"]]},
+    {k:"val", label:"New value", type:"text", def:""},
+    {k:"reason", label:"Reason code", type:"text", def:""}
+  ]; },
+  apply(w,c,vals){
+    c.t[vals.dim] = vals.val;
+    log("dev","<b>ADJUST_STATE</b> — "+vals.dim+" forced to "+vals.val+" ("+vals.reason+
+      "). Logged prominently; this is history nobody can fully trust.");
+  }
+}
+};
+
+/* ---- helpers the actions share ---------------------------------------- */
+function log0(s){ /* deferred note during a gate evaluation — gates must not write */ }
+
+function candidatesFor(w,t,s){
+  return rowsOf(w,t.id).filter(r => {
+    if (s.shipments.some(x => x.shipment_id===r.shipment_id)) return false;
+    if (s.direction==="LOAD") return r.direction==="OUTBOUND" &&
+      ["ASSIGNED","PART_LOADED"].includes(r.link_state);
+    return r.direction==="INBOUND" && r.link_state==="ON_BOARD";
+  });
+}
+
+function bindLeg(w, v, leg, number, source){
+  const collision = Object.values(w.trailers).find(t =>
+    t.number===number && onSite(t) && !t.retired_into);
+  if (collision){
+    log("dev","<b>Hard block</b> — "+number+" is already on site with an open visit. "+
+      "No override: this is a typo or a check-out that never happened (§5.1).");
+    return null;
+  }
+  let t = Object.values(w.trailers).find(x => x.number===number && !x.retired_into &&
+    x.position==="OFF_SITE");
+  if (!t){
+    const near = Object.values(w.trailers).find(x => x.number!==number &&
+      editDistance(x.number, number)===1);
+    t = mkTrailer(w, {id:"T"+(w.seq++), number, carrier:leg.carrier||"SWIFT"});
+    t.first_visit = true;
+    if (near) log("dev","<b>Near-match warning</b> — "+number+" is one character from "+
+      near.number+", seen here before. Offered before check-in completes (§5.1).");
+    else log("sys","<b>FIRST_VISIT</b> — "+number+" has no history here. Genuinely new, or a mistyped number.");
+  } else t.first_visit = false;
+  leg.trailer_id = t.id;
+  t.identity_confidence = "SINGLE_SOURCE";
+  w.idents.push({kind:"ENTRY", read_trailer:null, declared_trailer:t.id, source,
+    unresolved:false, at:w.clock});
+  rowsFromLeg(w, leg, t);
+  /* patterns 1 and 2 are the only ones where the same trailer appears on both
+     legs (model §4) — the seed says so, and binding the BRING leg binds both,
+     which is also where the TAKE leg's ASSIGNED rows come from. */
+  if (leg.kind==="BRING") v.legs.filter(l => l.same_as_bring && !l.trailer_id)
+    .forEach(l => { l.trailer_id = t.id; rowsFromLeg(w, l, t); });
+  log("act","<b>BIND_TRAILER_TO_LEG</b> — "+leg.kind+" leg = <b>"+number+"</b> ("+source+").");
+  return t;
+}
+
+/* The appointment is the single source of what is moving (§9 #37): binding the
+   trailer is the moment the known shipments and the unknown trailer meet. */
+function rowsFromLeg(w, leg, t){
+  const ids = (leg.expected_shipment_ids||[]).filter(sid =>
+    !w.loads.some(r => r.shipment_id===sid));
+  if (!ids.length) return;
+  ids.forEach(sid => mkLoad(w, sid, t.id, leg.kind==="BRING" ? "ON_BOARD" : "ASSIGNED"));
+  log("sys", leg.kind==="BRING"
+    ? "BRING leg rows created <b>ON_BOARD</b> — the freight is physically aboard already."
+    : "TAKE leg rows created <b>ASSIGNED</b> — planned for this trailer, not yet loaded.");
+  if (leg.kind==="TAKE" && t.empty_verification==="UNVERIFIED")
+    log("dev","Outbound rows now exist on a trailer whose empty state is <b>UNVERIFIED</b>. "+
+      "ASSIGN_SHIPMENT would have refused this (§9 #6); BIND_TRAILER_TO_LEG does not ask. "+
+      "Finding F11.");
+}
+
+function editDistance(a,b){
+  if (!a||!b) return 9;
+  if (a.length!==b.length) return Math.abs(a.length-b.length)+1;
+  let d = 0; for (let i=0;i<a.length;i++) if (a[i]!==b[i]) d++;
+  return d;
+}
+
+function releasePosition(w,t){
+  if (t.position==="YARD_SPOT" && t.spot && w.spots[t.spot])
+    w.spots[t.spot].occupants = w.spots[t.spot].occupants.filter(x => x!==t.id);
+  if (t.position==="DOCK" && t.dock && w.docks[t.dock] && w.docks[t.dock].holder===t.id){
+    w.docks[t.dock].state = "FREE"; w.docks[t.dock].holder = null;
+  }
+  t.spot = null; t.dock = null; t.lot = null;
+}
+
+function placeAt(w,t,where){
+  releasePosition(w,t);
+  if (where.startsWith("DOCK ")){ t.position = "DOCK"; t.dock = where.slice(5); }
+  else if (where.startsWith("SPOT ")){
+    t.position = "YARD_SPOT"; t.spot = where.slice(5);
+    const s = w.spots[t.spot];
+    if (s){ s.occupants.push(t.id);
+      if (s.occupants.length>1) log("dev","<b>SPOT_CONFLICT</b> — two trailers reported into "+
+        s.id+". Both reports accepted, never refused (§2.9)."); }
+  }
+  else if (where.startsWith("LOT ")){ t.position = "LOT"; t.lot = where.slice(4); }
+  else if (where==="YARD"){ t.position = "LOT"; t.lot = Object.keys(w.lots)[0]; }
+  t.verified_by_check = false;
+}
+/* ===========================================================================
+   PART 4 — WORLD EVENTS, TIERING, SCENARIOS
+
+   World events are kept separate from actions on purpose: "a clerk did
+   something" and "the world happened to you" are different kinds of fact, and
+   half the exception branches in flows §11 are the second kind.
+   ======================================================================== */
+
+const WORLD = {
+"@TICK":{
+  label:"Advance 45 minutes", ref:"—",
+  gate(){ return []; },
+  apply(w){ w.clock += 45; log("sys","Clock → <b>"+hhmm(w.clock)+"</b>."); }
+},
+"@ENTRY_READ":{
+  label:"Entry camera read lands", ref:"model §2.15 · §5.1",
+  gate(w){ return camerasLive(w) ? [] :
+    [H(CLS.STRUCTURAL,"No cameras at this facility — the near-match warning is the only soft control")]; },
+  form(w){
+    const here = Object.values(w.trailers).filter(t => onSite(t) || t.position==="AT_GATE_IN");
+    return [{k:"read", label:"What the camera read", type:"select",
+      options: here.map(t => [t.id, t.number+" (agrees with the guard)"])
+        .concat([["__OFF_BY_ONE__","A number one digit off — the reads disagree"],
+                 ["__NO_CHECKIN__","A trailer with no matching registration at all"]])}];
+  },
+  apply(w,c,vals){
+    const t = c.t;
+    if (vals.read==="__OFF_BY_ONE__"){
+      t.identity_confidence = "DISPUTED";
+      w.idents.push({kind:"ENTRY", read_trailer:t.id, declared_trailer:t.id, source:"CAMERA_AI",
+        unresolved:true, at:w.clock, mismatch:true});
+      log("dev","<b>ID_DISPUTED</b> — camera and guard disagree. One is wrong and the data cannot "+
+        "say which. Check-in proceeded provisionally so the gate did not stall.");
+    } else if (vals.read==="__NO_CHECKIN__"){
+      w.idents.push({kind:"ENTRY", read_trailer:t.id, declared_trailer:null, source:"CAMERA_AI",
+        unresolved:true, at:w.clock, no_registration:true});
+      log("dev","<b>ENTERED_WITHOUT_CHECKIN</b> — a gate-control finding, routed to security. "+
+        "Not the typo-cleanup queue: an unauthorized entry and a dirty lens must not be triaged alike.");
+    } else {
+      t.identity_confidence = "CORROBORATED";
+      log("sys","<b>CORROBORATED</b> — camera and guard agree. No human touches it.");
+    }
+  }
+},
+"@EXIT_READ":{
+  label:"Exit camera read lands", ref:"model §5.1 — detective, not preventive",
+  gate(w,c){
+    if (!w.config.exit_identification_enabled)
+      return [H(CLS.STRUCTURAL,"Exit reads are off — departure_time_source falls back to the clerk action")];
+    const v = c.v;
+    if (!v || v.presence!=="DEPARTED") return [H(CLS.PHYSICAL,"Nothing has departed yet")];
+    if (v.exit_read_done) return [H(CLS.STRUCTURAL,"Exit read already resolved")];
+    return [];
+  },
+  form(w,c){
+    const v = c.v, tl = takeLeg(w,v);
+    const declared = tl && tl.trailer_id;
+    const opts = [];
+    if (declared) opts.push([declared, w.trailers[declared].number+" — matches the declaration"]);
+    else opts.push(["__NO_TRAILER__","NO_TRAILER — bobtail, a matched outcome"]);
+    Object.values(w.trailers).filter(t => t.id!==declared && !t.retired_into)
+      .forEach(t => opts.push([t.id, t.number+" — NOT what was declared"]));
+    return [{k:"read", label:"What the exit camera saw", type:"select", options:opts,
+      def: declared || "__NO_TRAILER__"}];
+  },
+  apply(w,c,vals){
+    const v = c.v, tl = takeLeg(w,v);
+    const declared = tl && tl.trailer_id;
+    v.exit_read_done = true;
+    const capture = w.clock - 4;
+    if (vals.read==="__NO_TRAILER__" || vals.read===declared){
+      v.departed_at = capture;
+      w.idents.push({kind:"EXIT", read_trailer:declared||null, declared_trailer:declared||null,
+        source:"CAMERA_AI", unresolved:false, at:capture, outcome:"MATCHED"});
+      log("sys","Exit read <b>matched</b>. Departure time backfilled from the image capture at "+
+        hhmm(capture)+" — not the clerk's click. A class of billing dispute removed rather than recorded.");
+    } else {
+      const actual = w.trailers[vals.read];
+      /* the trailer that actually left, and the one everyone thinks left */
+      if (declared){
+        const st = w.trailers[declared];
+        st.prior_position = "YARD_SPOT"; st.prior_spot = st.spot || "B-07";
+      }
+      w.idents.push({kind:"EXIT", read_trailer:actual.id, declared_trailer:declared||null,
+        source:"CAMERA_AI", unresolved:true, at:capture, outcome:"UNDECLARED"});
+      log("dev","<b>UNDECLARED_TRAILER_EXIT</b> — the read says <b>"+actual.number+
+        "</b> left, the declaration says <b>"+(declared?w.trailers[declared].number:"nothing")+
+        "</b>. Check-out already completed. Recovery event raised; <b>RECOVERY_WINDOW_OPEN</b> "+
+        "while the driver is still reachable — and it decays.");
+    }
+  }
+},
+"@SENSOR":{
+  label:"Dock sensor changes", ref:"model §2.9 — an observation, not a belief",
+  gate(w){ return sensorsLive(w) ? [] :
+    [H(CLS.STRUCTURAL,"No sensors at this facility — no sensor state, flag or prompt may appear")]; },
+  form(w){ return [
+    {k:"dock", label:"Dock", type:"select", options:Object.values(w.docks).map(d=>[d.id,"Dock "+d.id])},
+    {k:"state", label:"Sensor reads", type:"select", options:[
+      ["OCCUPIED","OCCUPIED"],["VACANT","VACANT"],["UNKNOWN","UNKNOWN"]]}]; },
+  apply(w,c,vals){
+    const d = w.docks[vals.dock];
+    const prev = d.sensor;
+    d.sensor = vals.state;
+    const believed = Object.values(w.trailers).find(t => t.position==="DOCK" && t.dock===d.id);
+    log("sys","Dock "+d.id+" sensor "+prev+" → <b>"+vals.state+"</b>.");
+    if (vals.state==="OCCUPIED" && !believed)
+      log("dev","<b>UNRECORDED_DOCK_OCCUPANCY</b> — something is at dock "+d.id+" that nobody knows about.");
+    if (vals.state==="VACANT" && believed){
+      log("dev","<b>SPOT_UNCONFIRMED</b> — records show "+believed.number+" at dock "+d.id+
+        ", the sensor says empty. Neither source is silently trusted.");
+      if (openSession(w,believed.id))
+        log("dev","<b>UNRECORDED_DOCK_DEPARTURE</b> — the sensor went vacant mid-session.");
+    }
+  }
+},
+"@YARD_CHECK":{
+  label:"Run the daily yard check", ref:"model §2.12",
+  gate(){ return []; },
+  apply(w){
+    Object.values(w.trailers).forEach(t => { t.verified_by_check = true; });
+    w.returns.filter(r => r.state==="UNDISCOVERED").forEach(r => {
+      r.state = "AWAITING_INTAKE";
+      const t = w.trailers[r.trailer_id];
+      t.intake = "AWAITING_INTAKE";
+      log("dev","Yard check found <b>"+t.number+"</b> in the outside lot with no visit. "+
+        "<b>UnappointedReturn</b> created — up to a day of latency on your own asset.");
+    });
+    log("sys","<b>YardCheck</b> complete. Positions confirmed; <b>POSITION_STALE</b> cleared. "+
+      "A corrected position creates <b>no move task</b>.");
+  }
+},
+"@DRIVER_REPORTS_DROP":{
+  label:"Driver reports the drop from their phone", ref:"model §2.12 — stress test 1-xvii",
+  gate(w){ return w.returns.some(r => r.state==="UNDISCOVERED") ? [] :
+    [H(CLS.STRUCTURAL,"No undiscovered return to report")]; },
+  apply(w){
+    w.returns.filter(r => r.state==="UNDISCOVERED").forEach(r => {
+      r.state = "AWAITING_INTAKE"; r.reported = true;
+      w.trailers[r.trailer_id].intake = "AWAITING_INTAKE";
+    });
+    log("sys","Reported at the time of the drop. Discovery latency falls from a day to minutes; "+
+      "the intake path is otherwise identical.");
+  }
+}
+};
+
+/* ---- primary action, derived not configured (matrix §1.7) -------------- */
+function primaryFor(w, ctx){
+  const t = ctx.t, v = ctx.v;
+  const avail = id => ACTIONS[id] && treat(ACTIONS[id].gate(w,ctx)).t==="A";
+  const sess = t ? openSession(w,t.id) : null;
+  const last = t ? lastSession(w,t.id) : null;
+  const mv = t ? openMove(w,t.id) : null;
+  const rows = t ? rowsOf(w,t.id) : [];
+
+  if (t && t.position==="DOCK"){
+    if (!sess && rows.some(r => r.link_state==="ASSIGNED" || r.link_state==="ON_BOARD")
+        && avail("OPEN_SESSION")) return "OPEN_SESSION";
+    if (sess && sess.state==="OPEN" && sess.shipments.length && avail("START_SESSION")) return "START_SESSION";
+    if (sess && sess.state==="ACTIVE" && avail("END_SESSION")) return "END_SESSION";
+    if (!sess && last && ["ENDED","CANCELLED"].includes(last.state)){
+      if (avail("DECLARE_FILL_COMPLETE")) return "DECLARE_FILL_COMPLETE";
+      if (avail("PULL_FROM_DOCK")) return "PULL_FROM_DOCK";
+    }
+    if (!sess && !rows.length && avail("ASSIGN_SHIPMENT")) return "ASSIGN_SHIPMENT";
+  }
+  if (t && (t.position==="YARD_SPOT"||t.position==="LOT") && hasFreight(w,t.id) &&
+      t.fill==="COMPLETE" && !t.sealed && avail("SEAL_TRAILER")) return "SEAL_TRAILER";
+  if (mv){
+    if (mv.state==="PENDING" && avail("ASSIGN_MOVE_TASK")) return "ASSIGN_MOVE_TASK";
+    if (mv.state==="ASSIGNED" && avail("START_MOVE")) return "START_MOVE";
+    if (mv.state==="IN_PROGRESS" && avail("COMPLETE_MOVE")) return "COMPLETE_MOVE";
+  }
+  if (t && flagsOf(w,t.id).includes("NEEDS_MOVE") && avail("CREATE_MOVE_TASK")) return "CREATE_MOVE_TASK";
+  if (t && t.tractor && t.destination!=="NONE" && !atDestination(w,t) && avail("DRIVER_POSITIONS"))
+    return "DRIVER_POSITIONS";
+  if (v && takeLeg(w,v) && takeLeg(w,v).trailer_id &&
+      readyToDepart(w,v,takeLeg(w,v).trailer_id) && avail("AUTHORIZE_DEPARTURE"))
+    return "AUTHORIZE_DEPARTURE";
+  if (v && v.presence==="AUTHORIZED_TO_DEPART" && avail("CHECK_OUT")) return "CHECK_OUT";
+  if (t && t.identity_confidence==="DISPUTED" && avail("RESOLVE_IDENTIFICATION"))
+    return "RESOLVE_IDENTIFICATION";
+  if (w.idents.some(i => i.kind==="EXIT" && i.unresolved && i.outcome==="UNDECLARED") &&
+      avail("CORRECT_DEPARTURE")) return "CORRECT_DEPARTURE";
+  if (v && avail("SELF_REGISTER")) return "SELF_REGISTER";
+  if (v && avail("ADMIT")) return "ADMIT";
+  if (t && t.destination==="AWAITING_ASSIGNMENT" && avail("ASSIGN_DOCK")) return "ASSIGN_DOCK";
+  return null;
+}
+
+/* ---- assemble the console (matrix §1.5, §1.6) -------------------------- */
+function buildConsole(w, ctx){
+  const primary = primaryFor(w, ctx);
+  const rows = [];
+  Object.keys(ACTIONS).forEach(id => {
+    const a = ACTIONS[id];
+    const res = treat(a.gate(w,ctx));
+    const mx = matrixSays(id, w, ctx);
+    rows.push({id, a, res, primary:id===primary, sup:a.tier==="sup",
+      diverges: mx && mx!==res.t ? mx : null});
+  });
+  const sup = rows.filter(r => r.sup && r.res.t!=="H");
+  const supHidden = rows.filter(r => r.sup && r.res.t==="H");
+  const nonSup = rows.filter(r => !r.sup);
+  const prim = nonSup.filter(r => r.primary && r.res.t==="A");
+  const availables = nonSup.filter(r => r.res.t==="A" && !r.primary);
+  const disabled = nonSup.filter(r => r.res.t==="D")
+    .sort((x,y) => Math.min(...x.a.gate(w,ctx).map(f=>f.cls)) -
+                   Math.min(...y.a.gate(w,ctx).map(f=>f.cls)));
+  const shownD = disabled.slice(0,3);         /* matrix §1.5 — cap of three */
+  const moreD  = disabled.slice(3);
+  const hidden = nonSup.filter(r => r.res.t==="H");
+  return {prim, availables, shownD, moreD, hidden, sup, supHidden,
+    world: Object.keys(WORLD).map(id => {
+      const res = treat(WORLD[id].gate(w,ctx));
+      return {id, a:WORLD[id], res, world:true};
+    })};
+}
+
+/* ===========================================================================
+   SCENARIOS
+   The seven flows of flows.md, then the exception branches of §11 and the
+   stress tests of model §11 that bite hardest.
+   ======================================================================== */
+
+function baseYard(w){
+  ["25","27","29"].forEach(d => mkDock(w,d));
+  ["B-07","C-02","C-03"].forEach(s => mkSpot(w,s));
+  mkLot(w,"INSIDE", true); mkLot(w,"OUTSIDE", false);
+}
+/* blocked:true marks a step the documents expect to be REFUSED — the script
+   advances on "Confirm refused" rather than on the action succeeding. */
+const st = (id,phase,doId,actor,says,ref,check,blocked) =>
+  ({id,phase,do:doId,actor,says,ref,check,blocked});
+
+const SCENARIOS = [
+{
+  id:"F1", group:"The seven flows", name:"1 · Inbound live load", sub:"LIVE · third party",
+  ref:"flows §3 · pattern 1",
+  dek:"Trailer arrives loaded, unloads at a dock with the driver waiting, departs empty. The plain case, and the one that already exposes two contradictions between the matrix and the model.",
+  phases:["P0","P1","P2","P3","P4","P5","P6"],
+  seed(w){
+    baseYard(w);
+    mkShipment(w,{id:"SHP-1001", direction:"INBOUND", consignee:"This facility"});
+    mkShipment(w,{id:"SHP-1002", direction:"INBOUND", consignee:"This facility"});
+    mkVisit(w,{id:"V1", visit_type:"LIVE", legs:[
+      {kind:"BRING", trailer_id:null, hint_number:"48219", carrier:"SWIFT",
+       expected_shipment_ids:["SHP-1001","SHP-1002"]},
+      {kind:"TAKE", trailer_id:null, same_as_bring:true, expected_shipment_ids:[],
+       expected_residual_shipment_ids:[]}]});
+    w.focusVisit = "V1";
+  },
+  script:[
+    st("P1a","P1","SELF_REGISTER","Driver","Scans the QR sign at the facility, gives the appointment ID and trailer 48219.","flows §3 P1a",
+      w => { const v=w.visits.V1; const o=[];
+        if (v.presence!=="AT_FACILITY") o.push("presence should be AT_FACILITY");
+        if (v.registration!=="SELF_REGISTERED") o.push("registration should be SELF_REGISTERED");
+        if (!v.dockpass) o.push("a dockpass should have been issued");
+        const bl=bringLeg(w,v); if (!bl.trailer_id) o.push("the BRING leg should name a trailer");
+        return o; }),
+    st("P1b","P1","ADMIT","Gate / kiosk","Dockpass redeemed at the kiosk.","flows §3 P1b",
+      w => { const v=w.visits.V1, o=[];
+        if (v.presence!=="ON_SITE") o.push("presence should be ON_SITE");
+        const t=w.trailers[bringLeg(w,v).trailer_id];
+        if (t.position!=="AT_GATE_IN") o.push("trailer should be at AT_GATE_IN");
+        if (w.shipments["SHP-1001"].status!=="ARRIVED") o.push("inbound shipments should be ARRIVED");
+        return o; }),
+    st("P2","P2","ASSIGN_DOCK","Dispatcher","Dock assigned while the driver waits.","flows §3 P2",
+      w => { const t=w.trailers[bringLeg(w,w.visits.V1).trailer_id];
+        return t.destination==="DOCK_ASSIGNED" ? [] : ["destination should be DOCK_ASSIGNED"]; }),
+    st("P3","P3","DRIVER_POSITIONS","Driver","Drives to the dock himself. No move task at any point.","flows §3 P3 · stress 1-vi",
+      w => { const t=w.trailers[bringLeg(w,w.visits.V1).trailer_id], o=[];
+        if (t.position!=="DOCK") o.push("trailer should be at DOCK");
+        if (w.moves.length) o.push("NO move task should exist — stress test 1-vi");
+        return o; }),
+    st("P4a","P4","OPEN_SESSION","Dock lead","Unload session opens pre-populated with every ON_BOARD shipment.","flows §3 P4a",
+      w => { const s=w.sessions[0], o=[];
+        if (!s) return ["no session"];
+        if (s.shipments.length!==2) o.push("session should be pre-populated with both shipments");
+        if (s.direction!=="UNLOAD") o.push("direction should be UNLOAD");
+        return o; }),
+    st("P4b","P4","START_SESSION","Dock crew","Unloading.","flows §3 P4b"),
+    st("P4c","P4","END_SESSION","Dock lead","Session ended with an outcome for every shipment.","flows §3 P4c",
+      w => { const t=w.trailers[bringLeg(w,w.visits.V1).trailer_id], o=[];
+        if (loadState(w,t.id)!=="EMPTY") o.push("load state should be EMPTY");
+        if (t.empty_verification!=="VERIFIED_EMPTY") o.push("empty_verification should be VERIFIED_EMPTY");
+        if (w.shipments["SHP-1001"].status!=="RECEIVED") o.push("shipments should be RECEIVED");
+        return o; }),
+    st("P5a","P5","AUTHORIZE_DEPARTURE","Clerk","Departure authorized.","flows §3 P5a",
+      w => w.visits.V1.presence==="AUTHORIZED_TO_DEPART" ? [] : ["presence should be AUTHORIZED_TO_DEPART"]),
+    st("P5b","P5","CHECK_OUT","Gate","Driver pulls off the dock and leaves.","flows §3 P5b",
+      w => w.visits.V1.presence==="DEPARTED" ? [] : ["presence should be DEPARTED"]),
+    st("P6","P6","@EXIT_READ","System","Exit read lands minutes later; departure time backfills from the capture timestamp.","flows §3 P6")
+  ]
+},
+{
+  id:"F2", group:"The seven flows", name:"2 · Outbound live load", sub:"LIVE · loads and leaves",
+  ref:"flows §4 · pattern 2",
+  dek:"Arrives empty, loads with the driver waiting, departs loaded. The order fill-complete → seal → authorize is not optional, and the bench will not let you skip it.",
+  phases:["P0","P1","P2","P3","P4","P5","P6"],
+  seed(w){
+    baseYard(w);
+    ["SHP-2001","SHP-2002","SHP-2003"].forEach((id,i) =>
+      mkShipment(w,{id, direction:"OUTBOUND", consignee:["Kroger 412","HEB 88","Publix 7"][i]}));
+    mkVisit(w,{id:"V1", visit_type:"LIVE", legs:[
+      {kind:"BRING", trailer_id:null, hint_number:"53108", carrier:"ESTES", expected_shipment_ids:[]},
+      {kind:"TAKE", trailer_id:null, same_as_bring:true,
+       expected_shipment_ids:["SHP-2001","SHP-2002","SHP-2003"]}]});
+    w.focusVisit = "V1";
+  },
+  script:[
+    st("P1a","P1","SELF_REGISTER","Driver","Registers; claims the trailer is empty.","flows §4 P1a",
+      w => { const t=w.trailers[bringLeg(w,w.visits.V1).trailer_id], o=[];
+        if (!t) return ["no trailer bound"];
+        const rows = rowsOf(w,t.id);
+        if (rows.length!==3) o.push("TAKE-leg rows should have been created ASSIGNED at the gate");
+        if (rows.some(r => r.link_state!=="ASSIGNED")) o.push("rows should be ASSIGNED, not ON_BOARD");
+        return o; }),
+    st("P1b","P1","ADMIT","Gate","Admitted; empty claim recorded.","model §5.1",
+      w => { const t=w.trailers[bringLeg(w,w.visits.V1).trailer_id];
+        return t.empty_verification==="CLAIMED_EMPTY" ? [] : ["empty_verification should be CLAIMED_EMPTY"]; }),
+    st("P2","P2","ASSIGN_DOCK","Dispatcher","Dock assigned.","flows §4"),
+    st("P3","P3","DRIVER_POSITIONS","Driver","Drives to the dock. No move task.","flows §4 P3"),
+    st("P4b","P4","OPEN_SESSION","Dock crew","One session, pre-populated with every ASSIGNED row.","flows §4 P4b",
+      w => { const s=w.sessions[0];
+        return s && s.direction==="LOAD" && s.shipments.length===3 ? []
+          : ["session should be a LOAD pre-populated with all three"]; }),
+    st("P4b2","P4","START_SESSION","Dock crew","Loading.","flows §4 P4b"),
+    st("P4c","P4","END_SESSION","Dock lead","Ended with an outcome each.","flows §4 P4c"),
+    st("P4d","P4","DECLARE_FILL_COMPLETE","Dock lead","Fill declared complete — the human judgment the system cannot infer.","flows §4 P4d",
+      w => { const t=w.trailers[bringLeg(w,w.visits.V1).trailer_id];
+        return t.fill==="COMPLETE" ? [] : ["fill_declaration should be COMPLETE"]; }),
+    st("P4d2","P4","SEAL_TRAILER","Dock lead","Sealed; shipments STAGED.","flows §4 P4d",
+      w => w.shipments["SHP-2001"].status==="STAGED" ? [] : ["shipments should be STAGED"]),
+    st("P5a","P5","AUTHORIZE_DEPARTURE","Clerk","Authorized.","flows §4 P5a"),
+    st("P5b","P5","CHECK_OUT","Gate","Departs loaded.","flows §4"),
+    st("P6","P6","@EXIT_READ","System","Exit read confirms the trailer.","flows §4")
+  ]
+},
+{
+  id:"F3", group:"The seven flows", name:"3 · Inbound drop", sub:"DROP · the gap after the driver leaves",
+  ref:"flows §5 · pattern 3",
+  dek:"Dropped loaded; the driver leaves bobtail; unloading happens hours later on your schedule. The only flow that runs P2 twice — and the one that proves destination has to be a trailer dimension, not a visit one.",
+  phases:["P0","P1","P2","P3","P4","P5","P6"],
+  seed(w){
+    baseYard(w);
+    mkShipment(w,{id:"SHP-3001", direction:"INBOUND", consignee:"This facility"});
+    mkVisit(w,{id:"V1", visit_type:"DROP", legs:[
+      {kind:"BRING", trailer_id:null, hint_number:"71440", carrier:"ODFL",
+       expected_shipment_ids:["SHP-3001"]}]});
+    w.focusVisit = "V1";
+  },
+  script:[
+    st("P1","P1","SELF_REGISTER","Driver","Registers at the sign.","flows §5 P1"),
+    st("P1b","P1","ADMIT","Gate","Admitted.","flows §5 P1"),
+    st("P2","P2","ASSIGN_YARD","Dispatcher","No dock free — the yard it is.","flows §5 P2"),
+    st("P3a","P3","DRIVER_POSITIONS","Driver","Drives to the drop point. Still no move task.","flows §5 P3a"),
+    st("P3b","P3","DROP_TRAILER","Driver","Tractor detaches — the handoff.","flows §5 P3b",
+      w => { const t=w.trailers[bringLeg(w,w.visits.V1).trailer_id], o=[];
+        if (t.tractor) o.push("tractor should be detached");
+        if (t.destination!=="AWAITING_ASSIGNMENT") o.push("destination should return to AWAITING_ASSIGNMENT");
+        if (!flagsOf(w,t.id).includes("DROPPED_NO_DESTINATION")) o.push("DROPPED_NO_DESTINATION should be raised");
+        return o; }),
+    st("P5","P5","AUTHORIZE_DEPARTURE","Clerk","Authorized to leave bobtail.","flows §5 P5"),
+    st("P5b","P5","CHECK_OUT","Gate","Departs bobtail, before any unloading.","flows §5 P5"),
+    st("gap","P2","@TICK","—","The gap. The appointment is closed, the driver is gone, and the trailer still needs a dock — ageing with nobody waiting on it.","flows §5"),
+    st("P2p","P2","ASSIGN_DOCK","Dispatcher","A dock frees up. Assigned to the trailer, not to a visit.","flows §5 P2′",
+      w => { const t = Object.values(w.trailers)[0];
+        return visitOfTrailer(w,t.id) ? ["the visit should be closed — this assignment belongs to the trailer alone"] : []; }),
+    st("P3p","P3","CREATE_MOVE_TASK","Yard team","Now a move task exists.","flows §5 P3′"),
+    st("P3p2","P3","ASSIGN_MOVE_TASK","Dispatcher","Assigned to a spotter.","flows §5 P3′"),
+    st("P3p3","P3","START_MOVE","Spotter","Moving.","flows §5 P3′"),
+    st("P3p4","P3","COMPLETE_MOVE","Spotter","Reports where it actually went.","flows §5 P3′"),
+    st("P4","P4","OPEN_SESSION","Dock crew","Unload as flow 1.","flows §5 P4"),
+    st("P4b","P4","START_SESSION","Dock crew","Unloading.","flows §5 P4"),
+    st("P4c","P4","END_SESSION","Dock lead","Rows closed; load state EMPTY.","flows §5 P4")
+  ]
+},
+{
+  id:"F4", group:"The seven flows", name:"4 · Preload pickup", sub:"DROP · arrives bobtail",
+  ref:"flows §6 · pattern 4",
+  dek:"Driver arrives bobtail, hooks a staged preload, leaves. No BRING leg at all — which is where the registration and admission preconditions stop describing what happens.",
+  phases:["P0","P1","P3","P5","P6"], skip:["P2","P4"],
+  seed(w){
+    baseYard(w);
+    mkShipment(w,{id:"SHP-4001", direction:"OUTBOUND", consignee:"Sysco Nogales"});
+    const t = mkTrailer(w,{id:"T2", number:"60917", carrier:"SWIFT"});
+    t.position = "YARD_SPOT"; t.spot = "B-07"; w.spots["B-07"].occupants = ["T2"];
+    t.destination = "NONE"; t.fill = "COMPLETE"; t.sealed = true; t.seal = "SL448210";
+    t.empty_verification = "VERIFIED_EMPTY"; t.first_visit = false;
+    t.staged_since = w.clock - 200;
+    mkLoad(w,"SHP-4001","T2","ON_BOARD");
+    w.shipments["SHP-4001"].status = "STAGED";
+    mkVisit(w,{id:"V1", visit_type:"DROP", legs:[
+      {kind:"TAKE", trailer_id:"T2", expected_shipment_ids:["SHP-4001"]}]});
+    w.focusVisit = "V1"; w.focusTrailer = "T2";
+  },
+  script:[
+    st("P1","P1","SELF_REGISTER","Driver","Registers. There is no BRING leg — watch what the effects have nothing to act on.","flows §6 P1"),
+    st("P1b","P1","ADMIT","Gate","Admitted.","flows §6 P1"),
+    st("P3","P3","HOOK_TRAILER","Driver","Hooks the staged trailer. Any pending move task is cancelled.","flows §6 P3 · stress 1-xi",
+      w => { const t=w.trailers.T2, o=[];
+        if (!t.tractor) o.push("tractor should be attached");
+        if (openMove(w,"T2")) o.push("any pending move task should have been cancelled");
+        return o; }),
+    st("P5a","P5","AUTHORIZE_DEPARTURE","Clerk","Shipments match the TAKE leg, fill complete, sealed.","flows §6 P5a"),
+    st("P5b","P5","CHECK_OUT","Gate","Departs loaded.","flows §6 P5b"),
+    st("P6","P6","@EXIT_READ","System","This is where the wrong trailer gets caught. Try picking a trailer other than 60917.","flows §6 P6")
+  ]
+},
+{
+  id:"F5", group:"The seven flows", name:"5 · Drop and hook", sub:"DROP · two trailers, one visit",
+  ref:"flows §7 · patterns 5 & 6",
+  dek:"Brings one trailer, takes a different one. Nothing here is a distinct flow — it is two legs of the same spine running in one visit, which only works because trailer identity lives on the leg.",
+  phases:["P0","P1","P2","P3","P5","P6"], skip:["P4"],
+  seed(w){
+    baseYard(w);
+    mkShipment(w,{id:"SHP-5001", direction:"INBOUND", consignee:"This facility"});
+    mkShipment(w,{id:"SHP-5002", direction:"OUTBOUND", consignee:"Restaurant Depot 19"});
+    const t2 = mkTrailer(w,{id:"T2", number:"60917", carrier:"SWIFT"});
+    t2.position="YARD_SPOT"; t2.spot="C-02"; w.spots["C-02"].occupants=["T2"];
+    t2.fill="COMPLETE"; t2.sealed=true; t2.seal="SL441902"; t2.first_visit=false;
+    t2.empty_verification="VERIFIED_EMPTY"; t2.staged_since = w.clock-120;
+    mkLoad(w,"SHP-5002","T2","ON_BOARD"); w.shipments["SHP-5002"].status="STAGED";
+    mkVisit(w,{id:"V1", visit_type:"DROP", legs:[
+      {kind:"BRING", trailer_id:null, hint_number:"71440", carrier:"ODFL",
+       expected_shipment_ids:["SHP-5001"]},
+      {kind:"TAKE", trailer_id:"T2", expected_shipment_ids:["SHP-5002"]}]});
+    w.focusVisit="V1";
+  },
+  script:[
+    st("P1","P1","SELF_REGISTER","Driver","Registers; BRING = 71440, TAKE = 60917.","flows §7 P1"),
+    st("P1b","P1","ADMIT","Gate","Admitted.","flows §7 P1"),
+    st("P2","P2","ASSIGN_YARD","Dispatcher","A drop point for the trailer being brought.","flows §7"),
+    st("P3a","P3","DRIVER_POSITIONS","Driver","Takes T1 to its spot.","flows §7"),
+    st("P3b","P3","DROP_TRAILER","Driver","T1 dropped — yard-team responsibility.","flows §7 P3b"),
+    st("P3c","P3","HOOK_TRAILER","Driver","T2 hooked.","flows §7 P3",
+      w => w.trailers.T2.tractor ? [] : ["T2 should have a tractor attached"]),
+    st("P5","P5","AUTHORIZE_DEPARTURE","Clerk","Authorized on T2. T1 stays.","flows §7 P5"),
+    st("P5b","P5","CHECK_OUT","Gate","T2 departs; T1 remains on site.","flows §7 P5",
+      w => { const o=[];
+        if (w.trailers.T2.position!=="OFF_SITE") o.push("T2 should be OFF_SITE");
+        const t1 = Object.values(w.trailers).find(t=>t.number==="71440");
+        if (!t1 || t1.position==="OFF_SITE") o.push("T1 should still be on site");
+        return o; })
+  ]
+},
+{
+  id:"F6", group:"The seven flows", name:"6 · Company driver takes a preload", sub:"DROP · RF badge, no dockpass",
+  ref:"flows §8 · pattern 8",
+  dek:"Relaxed ceremony, identical record. Dockpass, guard interaction and seal ceremony all relax; which trailer left, which shipments were aboard, and the timestamp do not. The bench has to invent the entry path — the catalog has none.",
+  phases:["P0","P1","P3","P5","P6"], skip:["P2","P4"],
+  seed(w){
+    baseYard(w);
+    mkShipment(w,{id:"SHP-6001", direction:"OUTBOUND", consignee:"Route 14 — 6 stops"});
+    const t = mkTrailer(w,{id:"T7", number:"CH-2214", carrier:"CHENEY"});
+    t.position="YARD_SPOT"; t.spot="C-03"; w.spots["C-03"].occupants=["T7"];
+    t.fill="COMPLETE"; t.sealed=true; t.seal="SL460031"; t.first_visit=false;
+    t.empty_verification="VERIFIED_EMPTY"; t.readiness="READY"; t.staged_since=w.clock-60;
+    mkLoad(w,"SHP-6001","T7","ON_BOARD"); w.shipments["SHP-6001"].status="STAGED";
+    mkTrailer(w,{id:"T8", number:"CH-2241", carrier:"CHENEY"}).position="YARD_SPOT";
+    w.trailers.T8.spot="B-07"; w.spots["B-07"].occupants=["T8"]; w.trailers.T8.first_visit=false;
+    mkVisit(w,{id:"V1", visit_type:"DROP", party_type:"COMPANY_DRIVER", access_method:"RF_BADGE",
+      presence:"AT_FACILITY", dockpass:null,
+      legs:[{kind:"TAKE", trailer_id:"T7", expected_shipment_ids:["SHP-6001"]}]});
+    w.focusVisit="V1"; w.focusTrailer="T7";
+  },
+  script:[
+    st("P1","P1","ADMIT","Driver","Badges in. No dockpass, no guard.","flows §8 P1"),
+    st("P3","P3","HOOK_TRAILER","Driver","Hooks the trailer. Note the near-identical CH-2241 parked at B-07.","flows §8 P3"),
+    st("P5a","P5","AUTHORIZE_DEPARTURE","Driver","Reduced checks.","flows §8 P5"),
+    st("P5b","P5","CHECK_OUT","Driver","Departs on the RF badge.","flows §8 P5"),
+    st("P6","P6","@EXIT_READ","System","The exit read still fires — the whole control for the wrong-trailer risk, at no added ceremony. Pick CH-2241 to see it work.","flows §8 P6 · stress 1-xxii")
+  ]
+},
+{
+  id:"F7", group:"The seven flows", name:"7 · Company trailer returns", sub:"No appointment, no visit",
+  ref:"flows §9 · pattern 9",
+  dek:"The return leg of the fleet loop. No appointment, no registration, no visit — this flow starts at P6 and runs backwards into P0 of the next cycle. Turn readiness requirements off in the facility config and the whole prep chain must vanish.",
+  phases:["P6","P0"], skip:["P1","P2","P3","P4","P5"],
+  seed(w){
+    /* seeded with requirements so the prep chain exists at all — but only until
+       you touch the config, so stress test 1-xix-a stays testable here. */
+    if (!w.config._touched && !(w.config.readiness_requirements||[]).length)
+      w.config.readiness_requirements = ["wash","inspect"];
+    baseYard(w);
+    const t = mkTrailer(w,{id:"T9", number:"CH-2214", carrier:"CHENEY"});
+    t.position="LOT"; t.lot="OUTSIDE"; t.first_visit=false; t.readiness="NOT_READY";
+    t.empty_verification="UNVERIFIED"; t.verified_by_check=false;
+    w.returns.push({id:"UR1", trailer_id:"T9", state:"UNDISCOVERED", at:w.clock});
+    w.focusTrailer="T9";
+  },
+  script:[
+    st("R1","P6","@YARD_CHECK","Yard team","Found by the next day's yard check — or report it from the driver's phone instead and watch the latency collapse.","flows §9 · stress 1-xvi",
+      w => w.trailers.T9.intake==="AWAITING_INTAKE" ? [] : ["the return should be AWAITING_INTAKE"]),
+    st("R2","P6","INTAKE_TRAILER","Yard team","Brought into the system.","flows §9",
+      w => w.trailers.T9.intake==="TAKEN_IN" ? [] : ["intake_state should be TAKEN_IN"]),
+    st("R3","P0","ADVANCE_READINESS","Wash bay","Cleaning and inspection begin.","flows §9 · model §3.7"),
+    st("R4","P0","ADVANCE_READINESS","Inspector","Requirements met — or damage found, which goes to OUT_OF_SERVICE, not READY.","flows §9 · stress 1-xx"),
+    st("R5","P0","VERIFY_EMPTY","Yard team","Empty verification is still required before assignment.","model §2.13"),
+    st("R6","P0","ASSIGN_SHIPMENT","Planner","Now, and not one step earlier, it is assignable.","stress 1-xix",
+      w => flagsOf(w,"T9").includes("AVAILABLE_FOR_ASSIGNMENT") ||
+           rowsOf(w,"T9").length ? [] : ["the trailer should have entered the pool"])
+  ]
+},
+
+/* ---------------- exception branches ----------------------------------- */
+{
+  id:"X1", group:"Exception branches", name:"LTL partial receipt", sub:"stress tests 5 and 6",
+  ref:"model §2.5 · flows §11",
+  dek:"Five inbound shipments, three consigned here and two continuing onward. Three come off; the trailer departs with two still aboard and is authorized without discrepancy — but only because the residual list says so. Remove a third from the session and watch authorization break.",
+  phases:["P1","P2","P3","P4","P5","P6"],
+  seed(w){
+    baseYard(w);
+    [["SHP-7001","This facility"],["SHP-7002","This facility"],["SHP-7003","This facility"],
+     ["SHP-7004","Nogales — onward"],["SHP-7005","Nogales — onward"]]
+      .forEach(([id,c]) => mkShipment(w,{id, direction:"INBOUND", consignee:c}));
+    const t = mkTrailer(w,{id:"T4", number:"48219", carrier:"SWIFT"});
+    t.position="DOCK"; t.dock="27"; t.stay={dock:"27",opened_at:w.clock}; t.first_visit=false;
+    w.docks["27"].state="OCCUPIED"; w.docks["27"].holder="T4"; w.docks["27"].sensor="OCCUPIED";
+    ["SHP-7001","SHP-7002","SHP-7003","SHP-7004","SHP-7005"]
+      .forEach(id => { mkLoad(w,id,"T4","ON_BOARD"); w.shipments[id].status="ARRIVED"; });
+    mkVisit(w,{id:"V1", visit_type:"LIVE", presence:"ON_SITE", registration:"SELF_REGISTERED",
+      admitted_at:w.clock, on_site_since:w.clock, dockpass:"41022", dockpass_consumed:true,
+      legs:[{kind:"BRING", trailer_id:"T4", expected_shipment_ids:
+        ["SHP-7001","SHP-7002","SHP-7003","SHP-7004","SHP-7005"]},
+        {kind:"TAKE", trailer_id:"T4", expected_shipment_ids:[],
+         expected_residual_shipment_ids:[]}]});
+    w.trailers.T4.tractor = true;
+    w.focusVisit="V1"; w.focusTrailer="T4";
+  },
+  script:[
+    st("a","P4","OPEN_SESSION","Dock lead","Session opens pre-populated with all five. The user removes what stays aboard.","model §5.3"),
+    st("b","P4","REMOVE_SHIPMENT_FROM_SESSION","Dock lead","SHP-7004 stays aboard — and is offered to the TAKE leg's residual list.","model §2.5",
+      w => { const tl=takeLeg(w,w.visits.V1);
+        return (tl.expected_residual_shipment_ids||[]).includes("SHP-7004") ? []
+          : ["SHP-7004 should be on the residual list"]; }),
+    st("c","P4","REMOVE_SHIPMENT_FROM_SESSION","Dock lead","SHP-7005 too.","model §2.5"),
+    st("d","P4","START_SESSION","Dock crew","Unloading the three consigned here.","model §5.3"),
+    st("e","P4","END_SESSION","Dock lead","All three UNLOADED.","model §5.3"),
+    st("f","P5","AUTHORIZE_DEPARTURE","Clerk","PARTIAL_RECEIPT — normal, not an exception. Now reset and skip step (c) to see UNEXPECTED_RESIDUAL block this instead.","stress 5 and 6",
+      w => flagsOf(w,"T4").includes("PARTIAL_RECEIPT") ? []
+        : ["PARTIAL_RECEIPT should be raised on the departing trailer"])
+  ]
+},
+{
+  id:"X2", group:"Exception branches", name:"Part load blocks departure", sub:"stress tests 4 and 19",
+  ref:"model §3.2.1 · flows §11",
+  dek:"Four outbound shipments: A loaded, B not loaded, C at 60 per cent, D loaded. C becomes PART_LOADED — supervisor only — and from that moment fill-complete, sealing and departure are all blocked. Switch the role away from Supervisor first and the PARTIAL outcome is not even offered.",
+  phases:["P4","P5"], skip:["P0","P1","P2","P6"],
+  seed(w){
+    baseYard(w);
+    [["SHP-8001","Kroger 412"],["SHP-8002","HEB 88"],["SHP-8003","Publix 7"],["SHP-8004","Aldi 55"]]
+      .forEach(([id,c]) => mkShipment(w,{id, direction:"OUTBOUND", consignee:c}));
+    const t = mkTrailer(w,{id:"T5", number:"53108", carrier:"ESTES"});
+    t.position="DOCK"; t.dock="25"; t.stay={dock:"25",opened_at:w.clock};
+    t.empty_verification="VERIFIED_EMPTY"; t.first_visit=false;
+    w.docks["25"].state="OCCUPIED"; w.docks["25"].holder="T5"; w.docks["25"].sensor="OCCUPIED";
+    ["SHP-8001","SHP-8002","SHP-8003","SHP-8004"].forEach(id => {
+      mkLoad(w,id,"T5","ASSIGNED"); w.shipments[id].status="ASSIGNED"; });
+    mkVisit(w,{id:"V1", visit_type:"LIVE", presence:"ON_SITE", registration:"SELF_REGISTERED",
+      on_site_since:w.clock-60, dockpass:"52771", dockpass_consumed:true,
+      legs:[{kind:"BRING", trailer_id:"T5", expected_shipment_ids:[]},
+            {kind:"TAKE", trailer_id:"T5",
+             expected_shipment_ids:["SHP-8001","SHP-8002","SHP-8003","SHP-8004"]}]});
+    w.trailers.T5.tractor = true;
+    w.role="SUPERVISOR"; w.focusVisit="V1"; w.focusTrailer="T5";
+  },
+  script:[
+    st("a","P4","OPEN_SESSION","Dock lead","All four in the set.","model §5.3"),
+    st("b","P4","START_SESSION","Dock crew","Loading.","model §5.3"),
+    st("c","P4","END_SESSION","Supervisor","A loaded · B not loaded · C partial · D loaded.","stress 4",
+      w => { const rows=rowsOf(w,"T5"), o=[];
+        const by = id => rows.find(r=>r.shipment_id===id);
+        if (!rows.some(r=>r.link_state==="PART_LOADED")) o.push("one row should be PART_LOADED");
+        if (by("SHP-8002") && by("SHP-8002").link_state!=="ASSIGNED")
+          o.push("the NOT_LOADED shipment should return to ASSIGNED and be unassignable again");
+        return o; }),
+    st("d","P4","DECLARE_FILL_COMPLETE","Dock lead","Must be refused — the part-loaded row has to be resolved first. Read the reason, then confirm it.","stress 19",null,true),
+    st("e","P4","OPEN_SESSION","Dock lead","Resume: open another session on the same DockStay to finish C.","model §3.4"),
+    st("f","P4","START_SESSION","Dock crew","Finishing the part load.","model §5.3"),
+    st("g","P4","END_SESSION","Dock lead","C loaded this time.","model §5.3"),
+    st("h","P4","DECLARE_FILL_COMPLETE","Dock lead","Now it clears.","model §5.3"),
+    st("i","P4","SEAL_TRAILER","Dock lead","Sealed.","model §5.4"),
+    st("j","P5","AUTHORIZE_DEPARTURE","Clerk","Authorized.","model §5.1")
+  ]
+},
+{
+  id:"X3", group:"Exception branches", name:"Wrong trailer leaves", sub:"stress test 18d-ii",
+  ref:"model §5.1 · §5.5",
+  dek:"The driver hooks trailer B, declares nothing, and departs. Four minutes later the exit read resolves showing B. Check-out has already completed, so this is not an identification fix — it is amending a finished departure across three entities.",
+  phases:["P3","P5","P6"], skip:["P0","P2","P4"],
+  seed(w){
+    baseYard(w);
+    mkShipment(w,{id:"SHP-9001", direction:"OUTBOUND", consignee:"Sysco Nogales"});
+    mkShipment(w,{id:"SHP-9002", direction:"OUTBOUND", consignee:"US Foods Tucson"});
+    const a = mkTrailer(w,{id:"TA", number:"60917", carrier:"SWIFT"});
+    a.position="YARD_SPOT"; a.spot="B-07"; w.spots["B-07"].occupants=["TA"];
+    a.fill="COMPLETE"; a.sealed=true; a.seal="SL441902"; a.first_visit=false;
+    a.empty_verification="VERIFIED_EMPTY"; a.staged_since=w.clock-90;
+    mkLoad(w,"SHP-9001","TA","ON_BOARD"); w.shipments["SHP-9001"].status="STAGED";
+    const b = mkTrailer(w,{id:"TB", number:"60971", carrier:"SWIFT"});
+    b.position="YARD_SPOT"; b.spot="C-02"; w.spots["C-02"].occupants=["TB"];
+    b.fill="COMPLETE"; b.sealed=true; b.seal="SL441960"; b.first_visit=false;
+    b.empty_verification="VERIFIED_EMPTY"; b.staged_since=w.clock-90;
+    mkLoad(w,"SHP-9002","TB","ON_BOARD"); w.shipments["SHP-9002"].status="STAGED";
+    mkVisit(w,{id:"V1", visit_type:"DROP", presence:"ON_SITE", registration:"SELF_REGISTERED",
+      dockpass:"60013", dockpass_consumed:true, on_site_since:w.clock,
+      legs:[{kind:"TAKE", trailer_id:"TA", expected_shipment_ids:["SHP-9001"]}]});
+    w.focusVisit="V1"; w.focusTrailer="TA"; w.role="SUPERVISOR";
+  },
+  script:[
+    st("a","P3","HOOK_TRAILER","Driver","Directed to 60917. Hooks it on paper — the declaration is the record of record.","model §5.1"),
+    st("b","P5","AUTHORIZE_DEPARTURE","Clerk","Authorized. No camera dependency: reads are too slow to gate the lane.","model §5.1"),
+    st("c","P5","CHECK_OUT","Gate","Departs.","model §5.1"),
+    st("d","P6","@EXIT_READ","System","Pick 60971 — the one digit apart. The read lands after the fact.","stress 18d-ii",
+      w => w.idents.some(i=>i.kind==="EXIT" && i.outcome==="UNDECLARED")
+        ? [] : ["an undeclared exit should have been raised"]),
+    st("e","P6","CORRECT_DEPARTURE","Supervisor","Restores 60917 to the yard with its STAGED preload intact and marks 60971's shipments departed. The original check-out is retained and superseded.","model §5.5",
+      w => { const o=[];
+        if (w.trailers.TA.position==="OFF_SITE") o.push("60917 should be restored to the yard");
+        if (w.shipments["SHP-9001"].status!=="STAGED") o.push("60917's preload should be STAGED again");
+        if (w.shipments["SHP-9002"].status!=="DEPARTED") o.push("60971's shipment should be DEPARTED");
+        return o; })
+  ]
+},
+{
+  id:"X4", group:"Exception branches", name:"Idle dock", sub:"stress test 11",
+  ref:"glossary §7 — AWAITING_ASSIGNMENT",
+  dek:"An empty trailer spotted at a dock with nothing assigned. The most expensive invisible condition in a yard: an occupied dock doing nothing. It should surface unprompted, without anyone asking.",
+  phases:["P3","P4"], skip:["P0","P1","P2","P5","P6"],
+  seed(w){
+    baseYard(w);
+    mkShipment(w,{id:"SHP-1101", direction:"OUTBOUND", consignee:"Kroger 412"});
+    const t = mkTrailer(w,{id:"T6", number:"53201", carrier:"ESTES"});
+    t.position="DOCK"; t.dock="29"; t.stay={dock:"29",opened_at:w.clock-120};
+    t.empty_verification="VERIFIED_EMPTY"; t.first_visit=false;
+    w.docks["29"].state="OCCUPIED"; w.docks["29"].holder="T6"; w.docks["29"].sensor="OCCUPIED";
+    w.clock += 120;
+    w.focusTrailer="T6";
+  },
+  script:[
+    st("a","P4","ASSIGN_SHIPMENT","Planner","Two hours in, someone notices. Assign a shipment — the planner-driven path that has no appointment to derive from.","model §5.4"),
+    st("b","P4","OPEN_SESSION","Dock lead","Session opens on the row just created.","model §5.3"),
+    st("c","P4","START_SESSION","Dock crew","Loading.","model §5.3")
+  ]
+},
+{
+  id:"X5", group:"Exception branches", name:"Cross-dock refusal", sub:"stress test 7",
+  ref:"matrix §1.1 — the hidden case",
+  dek:"An outbound shipment is offered to a trailer still holding inbound freight. Refused — and refused by being hidden, not disabled, because clearing it would mean moving to a dock and unloading an entire inbound load. This is the worked example the availability rule turns on. Switch on “Show hidden actions” to see it and read why.",
+  phases:["P4"], skip:["P0","P1","P2","P3","P5","P6"],
+  seed(w){
+    baseYard(w);
+    mkShipment(w,{id:"SHP-1201", direction:"INBOUND", consignee:"This facility"});
+    mkShipment(w,{id:"SHP-1202", direction:"OUTBOUND", consignee:"HEB 88"});
+    const t = mkTrailer(w,{id:"T3", number:"71440", carrier:"ODFL"});
+    t.position="YARD_SPOT"; t.spot="B-07"; w.spots["B-07"].occupants=["T3"]; t.first_visit=false;
+    mkLoad(w,"SHP-1201","T3","ON_BOARD"); w.shipments["SHP-1201"].status="ARRIVED";
+    w.focusTrailer="T3";
+  },
+  script:[
+    st("a","P4","ASSIGN_SHIPMENT","Planner","Hidden, with nothing shown. Turn on hidden actions to read the engine's reason, then compare it to matrix §1.1.","stress 7"),
+    st("b","P4","MARK_OUT_OF_SERVICE","Maintenance","Now mark it out of service too. Two failing conditions — one disabled-class, one hidden-class — and nothing in matrix §1.1–1.3 says which wins. Finding F9.","matrix §1.3")
+  ]
+},
+{
+  id:"X6", group:"Exception branches", name:"Sensors disagree with the records", sub:"stress tests 1-xxv to 1-xxvii",
+  ref:"model §2.9 · §6.1",
+  dek:"A dock sensor is an observation, deliberately distinct from the trailer's believed position. Three ways they can disagree, and none of them silently trusts either source. Turn sensors off in the facility config and every one of these states, flags and prompts must vanish.",
+  phases:["P3","P4"], skip:["P0","P1","P2","P5","P6"],
+  seed(w){
+    baseYard(w);
+    mkShipment(w,{id:"SHP-1301", direction:"INBOUND", consignee:"This facility"});
+    const t = mkTrailer(w,{id:"T4", number:"48219", carrier:"SWIFT"});
+    t.position="DOCK"; t.dock="27"; t.stay={dock:"27",opened_at:w.clock}; t.first_visit=false;
+    w.docks["27"].state="OCCUPIED"; w.docks["27"].holder="T4"; w.docks["27"].sensor="OCCUPIED";
+    mkLoad(w,"SHP-1301","T4","ON_BOARD"); w.shipments["SHP-1301"].status="ARRIVED";
+    w.focusTrailer="T4";
+  },
+  script:[
+    st("a","P3","@SENSOR","System","Dock 14 style case first: set dock 29 OCCUPIED with nothing recorded there.","stress 1-xxv"),
+    st("b","P3","@SENSOR","System","Now set dock 27 VACANT while the records show 48219 there.","stress 1-xxvi"),
+    st("c","P4","OPEN_SESSION","Dock lead","Open a session, then drop the sensor to VACANT mid-work.","stress 1-xxvii"),
+    st("d","P4","START_SESSION","Dock crew","Working.","model §5.3"),
+    st("e","P4","@SENSOR","System","Sensor goes VACANT mid-session.","stress 1-xxvii")
+  ]
+},
+{
+  id:"X7", group:"Exception branches", name:"The typo that becomes a duplicate", sub:"stress tests 1b and 1c",
+  ref:"model §5.1 · §5.5",
+  dek:"The guard types 48291 for a trailer that has visited twice as 48219. The near-match warning fires before check-in completes. If it is ignored, the duplicate surfaces two hours later mid-unload — and renumbering is blocked until the session ends.",
+  phases:["P1","P4"], skip:["P0","P2","P3","P5","P6"],
+  seed(w){
+    baseYard(w);
+    mkShipment(w,{id:"SHP-1401", direction:"INBOUND", consignee:"This facility"});
+    const old = mkTrailer(w,{id:"TOLD", number:"48219", carrier:"SWIFT"});
+    old.first_visit = false; old.position = "OFF_SITE";
+    mkVisit(w,{id:"V1", visit_type:"LIVE", legs:[
+      {kind:"BRING", trailer_id:null, hint_number:"48291", carrier:"SWIFT",
+       expected_shipment_ids:["SHP-1401"]},
+      {kind:"TAKE", trailer_id:null, same_as_bring:true, expected_shipment_ids:[]}]});
+    w.focusVisit="V1"; w.role="SUPERVISOR";
+  },
+  script:[
+    st("a","P1","SELF_REGISTER","Driver","48291 is offered. One digit from 48219, seen here twice — read the warning in the log.","stress 1b"),
+    st("b","P1","ADMIT","Gate","Admitted without friction. A genuinely new trailer and a mistyped familiar one look identical in the data.","stress 1a"),
+    st("c","P4","ASSIGN_DOCK","Dispatcher","Dock assigned.","model §5.2"),
+    st("d","P4","DRIVER_POSITIONS","Driver","At the dock.","flows §3 P3"),
+    st("e","P4","OPEN_SESSION","Dock lead","Unload opens.","model §5.3"),
+    st("f","P4","START_SESSION","Dock crew","Mid-unload, someone spots the duplicate.","stress 1c"),
+    st("g","P4","CORRECT_TRAILER_IDENTITY","Supervisor","Must be refused during active work — renaming the subject of work in progress produces a history nobody can read afterwards.","stress 1c",null,true),
+    st("h","P4","END_SESSION","Dock lead","Session ended.","model §5.3"),
+    st("i","P4","CORRECT_TRAILER_IDENTITY","Supervisor","Now renumber to 48219.","model §5.5"),
+    st("j","P4","MERGE_TRAILERS","Supervisor","Merge retires the duplicate, never deletes it — its events legitimately happened.","stress 1c")
+  ]
+},
+{
+  id:"X8", group:"Exception branches", name:"Out of service mid-session", sub:"stress test 21",
+  ref:"model §5.5",
+  dek:"A trailer is marked out of service while a session is active. It deliberately does not cancel the session: the freight is physically half-moved and ending the work is a human decision. Everything downstream blocks; the work in front of the crew does not.",
+  phases:["P4","P5"], skip:["P0","P1","P2","P3","P6"],
+  seed(w){
+    baseYard(w);
+    mkShipment(w,{id:"SHP-1501", direction:"OUTBOUND", consignee:"Publix 7"});
+    const t = mkTrailer(w,{id:"T5", number:"53108", carrier:"ESTES"});
+    t.position="DOCK"; t.dock="25"; t.stay={dock:"25",opened_at:w.clock};
+    t.empty_verification="VERIFIED_EMPTY"; t.first_visit=false;
+    w.docks["25"].state="OCCUPIED"; w.docks["25"].holder="T5"; w.docks["25"].sensor="OCCUPIED";
+    mkLoad(w,"SHP-1501","T5","ASSIGNED"); w.shipments["SHP-1501"].status="ASSIGNED";
+    mkVisit(w,{id:"V1", visit_type:"LIVE", presence:"ON_SITE", registration:"SELF_REGISTERED",
+      dockpass:"53119", dockpass_consumed:true, on_site_since:w.clock-45,
+      legs:[{kind:"BRING", trailer_id:"T5", expected_shipment_ids:[]},
+            {kind:"TAKE", trailer_id:"T5", expected_shipment_ids:["SHP-1501"]}]});
+    w.trailers.T5.tractor = true;
+    w.focusVisit="V1"; w.focusTrailer="T5";
+  },
+  script:[
+    st("a","P4","OPEN_SESSION","Dock lead","Loading session.","model §5.3"),
+    st("b","P4","START_SESSION","Dock crew","Work in progress.","model §5.3"),
+    st("c","P4","MARK_OUT_OF_SERVICE","Maintenance","Damage found. The session survives.","stress 21",
+      w => openSession(w,"T5") ? [] : ["the active session should NOT have been cancelled"]),
+    st("d","P4","END_SESSION","Dock lead","The crew finishes what is in front of them.","model §5.3"),
+    st("e","P5","AUTHORIZE_DEPARTURE","Clerk","Blocked on service state — precedence class 1, ahead of everything else.","matrix §1.3")
+  ]
+}
+];
+/* ===========================================================================
+   PART 5 — FINDINGS FROM THE BUILD PASS
+
+   These are not opinions about the design. Each one is a place where the four
+   documents could not all be implemented at once, found by writing the engine
+   above and hitting the wall. Every one names the sections that disagree.
+   ======================================================================== */
+
+const SEEDED = [
+{id:"F1", sev:"contradiction", title:"ADMIT cannot fire where two documents say it must",
+ body:"Matrix §2.1 marks ADMIT <b>H — not here</b> in the AT_FACILITY column, available only at AT_GATE. But model §5.1 gives its precondition as “presence = AT_FACILITY <i>or</i> AT_GATE”, and flows §3 P1b admits straight from AT_FACILITY with no RECORD_ARRIVAL in between. Since RECORD_ARRIVAL requires “no prior QR scan”, a self-registered driver can never reach AT_GATE — so under the matrix, every self-registering driver is unadmittable. Two documents against one; the matrix row looks like the outlier.",
+ refs:"matrix §2.1 · model §5.1 · flows §3 P1b"},
+{id:"F2", sev:"contradiction", title:"SELF_REGISTER is hidden in every column it has",
+ body:"Matrix §2.1 gives SELF_REGISTER four columns and marks it <b>H</b> in all four — impossible when OFF_SITE, already-registered everywhere else. There is no state in which the matrix makes it available, yet it is the first step of five of the seven flows. This is the same circularity the matrix records fixing in v0.3 (“CHECK_IN is what <i>causes</i> AT_GATE_IN, so the action was only available once its own effect had happened”), reappearing in a new form: the QR scan is what causes AT_FACILITY. The resolution is probably that the scan is an event, not a screen action — but then it does not belong in an action-availability matrix at all, and the action catalog should say so.",
+ refs:"matrix §2.1 · matrix changelog v0.3 · model §5.1"},
+{id:"F3", sev:"contradiction", title:"CHECK_OUT sets a value the presence dimension does not have",
+ body:"Model §5.1 gives CHECK_OUT the effect “Visit → <b>CHECKED_OUT</b>”, and §6.1 defines PAST_WINDOW as “visit not CHECKED_OUT”. But the presence dimension (glossary §5.4) runs OFF_SITE · AT_FACILITY · AT_GATE · ON_SITE · AUTHORIZED_TO_DEPART · <b>DEPARTED</b> — there is no CHECKED_OUT. Flows §3 P5b says presence → DEPARTED. The engine uses DEPARTED and the glossary is the designated tiebreaker, so two strings in the model need changing.",
+ refs:"model §5.1 · model §6.1 · glossary §5.4 · flows §3 P5b"},
+{id:"F4", sev:"contradiction", title:"TURN_AWAY's preconditions name two retired states",
+ body:"Model §5.1 gives TURN_AWAY the precondition “Visit <b>ARRIVED</b> or <b>CHECKED_IN</b>”. Glossary §3 retires CHECKED_IN outright (“was a composite masquerading as one value”) and ARRIVED is not a value of any visit dimension. Matrix §2.1 gives the live answer — available at AT_FACILITY, AT_GATE and ON_SITE, hidden at OFF_SITE — so the fix is mechanical, but the action catalog is the document developers will read.",
+ refs:"model §5.1 · glossary §3 · matrix §2.1"},
+{id:"F5", sev:"copy", title:"The canonical blocked-reason copy uses a banned term",
+ body:"Matrix §3.2 gives the reason string for an un-admitted visit as “<b>Check the visit in first</b>”. Glossary §2 bans “check in” as the highest-value entry on the list, because it collapses two distinct events. Matrix §2.1 says “<b>Admit the visit first</b>” for the same condition. Two rows of the same document disagree and one of them breaks the vocabulary rule. The engine uses the §2.1 wording.",
+ refs:"matrix §3.2 · matrix §2.1 · glossary §2"},
+{id:"F6", sev:"gap", title:"Registration and admission assume a BRING leg exists",
+ body:"SELF_REGISTER's effects (model §5.1) include “BRING-leg trailer bound” and “<b>destination → AWAITING_ASSIGNMENT</b>”; ADMIT's preconditions include “BRING-leg trailer identified”. Flows 4 and 6 are TAKE-only visits — a driver arriving bobtail for a preload. There is no BRING leg to bind, nothing to set a destination on, and the identification precondition is vacuously true, so the weakest data in the system goes unchecked on exactly the visits where the wrong-trailer risk is highest. Watch the log on flow 4 step P1.",
+ refs:"model §5.1 · flows §6 · flows §8 · model §4 patterns 4 and 8"},
+{id:"F7", sev:"gap", title:"A company driver's entry has no action and no credential",
+ body:"Flows §8 P1 sets presence → ON_SITE with the Actions column reading “RF access” — not an action name. ADMIT consumes a dockpass, and flow 6 explicitly has none. Nothing in §5.1 accepts an RF badge as the credential, so as written the catalog refuses the visit that §5.1's own prose describes as routine. The engine accepts <span class=\"id\">access_method = RF_BADGE</span> as a third credential alongside the dockpass and gate registration; that is an invention, and it should be a decision.",
+ refs:"flows §8 P1 · model §5.1 · glossary §5.4"},
+{id:"F8", sev:"contradiction", title:"A fence crossing changes a presence that may not exist",
+ body:"COMPLETE_MOVE's effects (model §5.2) say “if the move crossed the fence, <b>presence</b> changes with it”, and stress test 1-xiv requires presence to go AT_FACILITY → ON_SITE mid-move. But presence is an <i>Appointment</i> dimension (glossary §5.4), and the trailer most likely to be moved from an outside lot is a company return with no appointment at all (flow 7). Either presence is partly a trailer dimension, or fence-crossing needs its own trailer-level fact. Run flow 7, then move the trailer inside, and read the log.",
+ refs:"model §5.2 · glossary §5.4 · flows §9 · stress test 1-xiv"},
+{id:"F9", sev:"unspecified", title:"Nothing says whether hiding or disabling wins",
+ body:"Matrix §1.1 assigns a treatment to each blocking <i>condition</i>, and §1.3 picks one reason by precedence when several fail. Neither says what to do when an action fails a hidden-class condition <i>and</i> a disabled-class one — a trailer holding inbound freight (hidden) that is also out of service (disabled). The engine hides, on the reasoning that a disabled control offering to fix the wrong thing is worse than no control. It is a real choice and it belongs in §1.1. Scenario “Cross-dock refusal” sets it up in two steps.",
+ refs:"matrix §1.1 · matrix §1.3"},
+{id:"F10", sev:"blocks", title:"No action positions a trailer that has a driver",
+ body:"Deleting DRIVER_SELF was right — a driver needs a destination, not a task — but §5 then has no action that changes such a trailer's position. CREATE_MOVE_TASK is hidden while a tractor is attached; COMPLETE_MOVE requires a task. So flows 1, 2, 3 and 5 and stress tests 1-vi, 1-x and 12 have a step with nothing behind it, and the trailer can never reach AT_GATE_OUT either — which is the position matrix §2.3 requires before AUTHORIZE_DEPARTURE and CHECK_OUT are anything but hidden. The bench supplies <span class=\"id\">DRIVER_POSITIONS</span>, marked as its own, and every flow above depends on it.",
+ refs:"model §3.5 · model §5.2 · matrix §2.3 · stress tests 1-vi, 1-x, 12"},
+{id:"F11", sev:"contradiction", title:"The empty-verification guard is bypassed by the path that replaced it",
+ body:"ASSIGN_SHIPMENT requires <span class=\"id\">empty_verification ≠ UNVERIFIED</span> (§9 #6) — you may not plan freight onto a trailer nobody has confirmed is empty. But §9 #37 moved appointment-driven work off that action entirely: BIND_TRAILER_TO_LEG creates the TAKE leg's rows itself, and its preconditions do not mention empty verification at all. So the common case now skips the check and the exception path keeps it. Separately, VERIFY_EMPTY's precondition reads “load state <b>EMPTY</b>”, which an outbound live load stops satisfying the moment its leg is bound and the rows appear — under the literal reading the action can never fire on the flow that needs it. Both readings are in flow 2; watch the log at step P1a.",
+ refs:"model §5.4 · model §5.1 · model §9 #6 · model §9 #37 · flows §4"}
+];
+const SEV = {
+  blocks:{l:"Blocks a flow", t:"r"}, contradiction:{l:"Documents disagree", t:"r"},
+  gap:{l:"Unspecified case", t:"a"}, copy:{l:"Copy / vocabulary", t:"b"},
+  unspecified:{l:"Engine had to choose", t:"a"}, note:{l:"Your note", t:"b"}
+};
+
+/* ===========================================================================
+   PART 6 — RENDER
+   ======================================================================== */
+
+const $  = s => document.querySelector(s);
+const esc = s => String(s==null?"":s).replace(/[&<>"]/g, c =>
+  ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const idt = s => '<span class="id">'+esc(s)+'</span>';
+let VERDICTS = {};     /* findings/<id> from db */
+let NOTES = [];        /* viewer-added findings from db */
+
+function ctxOf(w){
+  let t = w.focusTrailer && w.trailers[w.focusTrailer];
+  let v = w.focusVisit && w.visits[w.focusVisit];
+  if (!t && v){
+    const leg = v.legs.find(l => l.trailer_id);
+    if (leg) t = w.trailers[leg.trailer_id];
+  }
+  if (!v && t) v = visitOfTrailer(w,t.id);
+  if (!t) t = Object.values(w.trailers).filter(x => !x.retired_into)[0] || null;
+  return {t, v, role:w.role};
+}
+
+/* ---- left rail --------------------------------------------------------- */
+function renderRail(){
+  const groups = [];
+  SCENARIOS.forEach(s => {
+    let g = groups.find(x => x.name===s.group);
+    if (!g){ g = {name:s.group, items:[]}; groups.push(g); }
+    g.items.push(s);
+  });
+  $("#rail").innerHTML = groups.map(g =>
+    '<div class="grp">'+esc(g.name)+'<i></i></div>' +
+    g.items.map(s =>
+      '<button class="scen" type="button" data-scen="'+s.id+'" aria-current="'+
+        (SCEN && SCEN.id===s.id)+'">' +
+        '<span class="nm">'+esc(s.name)+'</span>' +
+        '<span class="sb">'+esc(s.sub)+'</span></button>').join("")
+  ).join("") +
+  '<div class="grp">How to read this<i></i></div>' +
+  '<div style="padding:4px 14px 0;font-size:11.5px;color:var(--steel);line-height:1.5">' +
+  '<p style="margin-bottom:7px">Pick a scenario, then work it by clicking actions. '+
+  'The bench derives what is available from the model’s own preconditions and '+
+  'compares it to matrix §2.1 wherever that table applies.</p>'+
+  '<p style="margin-bottom:7px"><span class="id">MONO</span> is always an internal '+
+  'identifier. Sans is always a displayed label. Glossary §1.1 insists they stay '+
+  'different things.</p>'+
+  '<p>Actions the bench had to invent are labelled <b>ENGINE</b>. There is one, '+
+  'and finding F10 is why.</p></div>';
+}
+
+/* ---- spine ------------------------------------------------------------- */
+function renderSpine(){
+  const used = SCEN ? SCEN.phases : [];
+  const cur = currentStep();
+  const nowPhase = cur ? cur.phase : null;
+  const donePhases = new Set(SCEN ? SCEN.script.slice(0,CURSOR).map(s => s.phase) : []);
+  $("#spine").innerHTML = PHASES.map(p => {
+    const cls = ["ph"];
+    if (!used.includes(p.k)) cls.push("skip");
+    else if (p.k===nowPhase) cls.push("now");
+    else if (donePhases.has(p.k)) cls.push("done");
+    else cls.push("used");
+    return '<div class="'+cls.join(" ")+'"><span class="k">'+p.k+' · '+esc(p.n)+
+      '</span><span class="q">'+esc(p.q)+'</span></div>';
+  }).join("");
+  const skipped = PHASES.filter(p => !used.includes(p.k)).map(p => p.k);
+  $("#spinenote").innerHTML = SCEN
+    ? (skipped.length
+        ? "This flow uses "+used.length+" of the six phases. "+skipped.join(", ")+
+          " do not apply — struck through rather than hidden, because which phases a flow "+
+          "<i>skips</i> is the fact that makes them one spine instead of seven pipelines."
+        : "This flow uses every phase." )
+    : "";
+  $("#flowid").textContent = SCEN ? SCEN.id : "";
+}
+
+/* ---- objects on stage -------------------------------------------------- */
+function dimRow(d, v, why, hide){
+  return '<div class="dim'+(hide?" collapsed":"")+'"><span class="d">'+esc(d)+
+    '</span><span class="v">'+v+(why?'<span class="why">'+why+'</span>':'')+'</span></div>';
+}
+function renderObjects(){
+  const w = W, c = ctxOf(w);
+  const cards = [];
+  Object.values(w.visits).forEach(v => {
+    const bl = bringLeg(w,v), tl = takeLeg(w,v);
+    cards.push('<div class="obj'+(c.v&&c.v.id===v.id?" focus":"")+'">' +
+      '<h3><span class="n">Visit '+esc(v.id)+'</span><span class="c">'+
+        esc(v.visit_type)+' · '+esc(v.party_type.replace("_"," ").toLowerCase())+
+        ' · window '+hhmm(v.window[0])+"–"+hhmm(v.window[1])+'</span>' +
+        (c.v&&c.v.id===v.id?'':'<button type="button" data-focusv="'+v.id+'">focus</button>')+
+      '</h3>' +
+      '<div class="dims">' +
+        dimRow("Registration", idt(v.registration)) +
+        dimRow("Presence", idt(v.presence)) +
+        dimRow("Access", idt(v.access_method) +
+          (v.dockpass ? ' · dockpass '+idt(v.dockpass)+(v.dockpass_consumed?" (consumed)":"") : "")) +
+        v.legs.map(l => dimRow(l.kind+" leg",
+          (l.trailer_id ? idt(w.trailers[l.trailer_id].number) :
+            (l.bobtail ? '<span style="color:var(--steel)">bobtail — nothing taken</span>' :
+             '<span style="color:var(--mute)">not yet bound</span>' +
+             (l.hint_number?' <span class="why">driver will say '+idt(l.hint_number)+'</span>':''))),
+          ((l.expected_shipment_ids||[]).length
+            ? "expects "+l.expected_shipment_ids.join(", ") : "no freight expected") +
+          ((l.expected_residual_shipment_ids||[]).length
+            ? " · residual "+l.expected_residual_shipment_ids.join(", ") : ""))).join("") +
+        (v.turned_away ? dimRow("Turned away", idt(v.turn_reason||"—")) : "") +
+        (v.on_site_since!=null ? dimRow("On site since", hhmm(v.on_site_since) +
+          ' <span class="why">detention runs from here</span>') : "") +
+      '</div></div>');
+  });
+  Object.values(w.trailers).filter(t => !t.retired_into).forEach(t => {
+    const ls = loadState(w,t.id);
+    const fl = flagsOf(w,t.id);
+    const rows = rowsOf(w,t.id);
+    const sess = openSession(w,t.id) || lastSession(w,t.id);
+    const mv = w.moves.filter(m => m.trailer_id===t.id).slice(-1)[0];
+    const lsTone = ls==="INTEGRITY_ALARM" ? "r" : ls==="PART_LOADED" ? "a" :
+      ls==="EMPTY" ? "m" : "b";
+    cards.push('<div class="obj'+(c.t&&c.t.id===t.id?" focus":"")+'">' +
+      '<h3><span class="n">'+idt(t.number)+'</span><span class="c">'+esc(t.carrier)+
+        ' · '+esc(t.kind)+'</span>' +
+        (c.t&&c.t.id===t.id?'':'<button type="button" data-focust="'+t.id+'">focus</button>')+
+      '</h3>' +
+      '<div class="display"><span class="lbl">Displayed status</span><br>' +
+        '<span class="val">'+esc(displayStatus(w,t.id))+'</span></div>' +
+      '<div class="dims">' +
+        dimRow("Load state", '<span class="bdg '+lsTone+'">'+esc(ls)+'</span>',
+          "derived from "+rows.length+" row"+(rows.length===1?"":"s")+", never stored") +
+        dimRow("Position", idt(t.position) +
+          (t.dock?" · dock "+t.dock:"") + (t.spot?" · "+t.spot:"") +
+          (t.lot?" · "+(w.lots[t.lot].inside_fence?"inside":"outside")+" lot":"")) +
+        dimRow("Destination", idt(t.destination) +
+          (t.requested_destination?' <span class="why">asked for '+esc(t.requested_destination)+'</span>':"")) +
+        dimRow("Readiness", idt(t.readiness),
+          readinessLive(w) ? "requirements: "+(w.config.readiness_requirements||[]).join(", ")
+            : "no requirements configured — this dimension should not appear at all",
+          !readinessLive(w)) +
+        dimRow("Service", idt(t.service)) +
+        dimRow("Fill", idt(t.fill) + (t.sealed?" · sealed "+idt(t.seal||""):" · unsealed")) +
+        dimRow("Empty verification", idt(t.empty_verification)) +
+        dimRow("Identity", idt(t.identity_confidence),
+          camerasLive(w) ? "" : "no cameras — near-match warning is the only soft control") +
+        dimRow("Tractor", t.tractor
+          ? '<span class="bdg">attached</span> <span class="why">needs a destination, not a task</span>'
+          : '<span class="bdg m">none</span> <span class="why">movement is a task</span>') +
+        (rows.length ? dimRow("Rows", rows.map(r =>
+          idt(r.shipment_id)+" <span class=\"why\" style=\"display:inline\">"+
+          r.direction.toLowerCase()+" · "+r.link_state+" · "+
+          w.shipments[r.shipment_id].status+"</span>").join("<br>")) : "") +
+        (sess ? dimRow("Session", idt(sess.state)+" · "+idt(sess.direction)+
+          ' <span class="why">'+sess.shipments.map(x => x.shipment_id +
+            (x.outcome?" → "+x.outcome:"")).join(", ")+'</span>') : "") +
+        (mv ? dimRow("Move task", idt(mv.state)+" → "+esc(mv.requested_destination) +
+          (mv.actual_destination && mv.actual_destination!==mv.requested_destination
+            ? ' <span class="why">actually '+esc(mv.actual_destination)+'</span>' : "")) : "") +
+      '</div>' +
+      '<div class="flags">' + (fl.length ? fl.map(f =>
+        '<span class="bdg '+(FLAG_TONE[f]||"")+'" title="'+esc(f)+'">'+
+        esc(LABEL[f]||f)+'</span>').join("")
+        : '<span class="none">No flags. Nothing about this trailer needs attention.</span>') +
+      '</div></div>');
+  });
+  $("#objs").innerHTML = cards.join("");
+}
+
+/* ---- actions ----------------------------------------------------------- */
+function actChip(r, isNext){
+  const a = r.a;
+  const cls = ["act"];
+  if (r.res.t==="A") cls.push(r.primary ? "p" : "");
+  if (r.res.t==="D") cls.push("d");
+  if (r.res.t==="H") cls.push("h");
+  if (r.sup) cls.push("sup");
+  if (isNext) cls.push("next");
+  const dis = r.res.t!=="A" ? " disabled" : "";
+  const div = r.diverges
+    ? '<span class="aw" style="color:var(--bad)">matrix §2.1 says '+r.diverges+
+      ', engine says '+r.res.t+'</span>' : "";
+  return '<button type="button" class="'+cls.join(" ").trim()+'" data-act="'+r.id+'"'+dis+'>' +
+    '<span class="an">'+esc(a.label)+(a.engine?" · ENGINE":"")+'</span>' +
+    (r.res.why ? '<span class="aw">'+esc(r.res.why)+'</span>' : '') + div + '</button>';
+}
+function renderActions(){
+  const w = W, c = ctxOf(w);
+  const con = buildConsole(w,c);
+  const cur = currentStep();
+  const nextId = cur ? cur.do : null;
+  const out = [];
+
+  out.push('<div class="tier"><span class="t">Primary — the next step for this trailer'+
+    '<i></i>derived, never configured (matrix §1.7)</span><div class="acts">' +
+    (con.prim.length ? con.prim.map(r => actChip(r, r.id===nextId)).join("")
+      : '<span class="hidnote">Nothing advances this trailer right now. '+
+        'A primary slot is never filled by a disabled action.</span>') +
+    '</div></div>');
+
+  out.push('<div class="tier"><span class="t">Secondary<i></i></span><div class="acts">' +
+    (con.availables.length ? con.availables.map(r => actChip(r, r.id===nextId)).join("")
+      : '<span class="hidnote">Nothing else is available.</span>') +
+    con.shownD.map(r => actChip(r, r.id===nextId)).join("") +
+    '</div>' +
+    (con.moreD.length ? '<p class="hidnote">'+con.moreD.length+
+      ' further blocked action'+(con.moreD.length===1?"":"s")+' collapsed — the cap of three '+
+      'is matrix §1.5, and the matrix calls it arbitrary: '+
+      con.moreD.map(r => esc(r.a.label)).join(", ")+'.</p>' : "") +
+    '</div>');
+
+  if (con.sup.length) out.push('<div class="supwrap"><span class="t" style="font-size:10px;'+
+    'font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--bad)">'+
+    'Supervisor — reason code required</span><div class="acts">' +
+    con.sup.map(r => actChip(r, r.id===nextId)).join("") + '</div>' +
+    '<p class="note" style="margin:0;background:none;border:0;border-left:0;padding:0;'+
+    'font-size:11px;color:var(--bad)">These write history nobody can fully trust. '+
+    'Physical separation from the routine actions is a cheap control.</p></div>');
+
+  out.push('<div class="tier"><span class="t">The world, not a user<i></i>'+
+    'half the exception branches are this kind of fact</span><div class="acts">' +
+    con.world.map(r => actChip(r, r.id===nextId)).join("") + '</div></div>');
+
+  if (SHOW_HIDDEN){
+    const hid = con.hidden.concat(con.supHidden);
+    out.push('<div class="tier"><span class="t">Hidden — and why<i></i>'+
+      'normally invisible; matrix §6 asks whether that hurts learning</span><div class="acts">' +
+      hid.map(r => actChip(r,false)).join("") + '</div></div>');
+  }
+  $("#actions").innerHTML = out.join("");
+}
+
+/* ---- script ------------------------------------------------------------ */
+function currentStep(){ return SCEN && CURSOR < SCEN.script.length ? SCEN.script[CURSOR] : null; }
+function renderSteps(){
+  if (!SCEN){ $("#steps").innerHTML = ""; return; }
+  $("#steps").innerHTML = SCEN.script.map((s,i) => {
+    const res = SCEN._results && SCEN._results[i];
+    const cls = ["step"];
+    if (i===CURSOR) cls.push("now");
+    else if (i<CURSOR) cls.push("past");
+    if (res && res.status==="pass") cls.push("pass");
+    if (res && res.status==="fail") cls.push("fail");
+    const act = (ACTIONS[s.do]||WORLD[s.do]);
+    const mk = res
+      ? (res.status==="pass" ? (s.blocked ? "refused, as written" : "matches the doc")
+                             : res.issues.join("; "))
+      : (i===CURSOR ? (s.blocked ? "expects a refusal" : "you are here") : "");
+    return '<div class="'+cls.join(" ")+'">' +
+      '<span class="sid">'+esc(s.id)+'</span>' +
+      '<span class="sy">'+esc(s.says)+'<br>' +
+        '<span class="who">'+esc(s.actor)+' · '+idt(s.do)+
+        (act && act.engine ? ' <b style="color:var(--bad)">ENGINE</b>' : '')+'</span> ' +
+        '<span class="ref">'+esc(s.ref||"")+'</span></span>' +
+      '<span class="mk">'+esc(mk)+'</span></div>';
+  }).join("");
+  const done = (SCEN._results||[]).filter(r => r && r.status==="pass").length;
+  const bad  = (SCEN._results||[]).filter(r => r && r.status==="fail").length;
+  $("#scriptstat").innerHTML = CURSOR>=SCEN.script.length
+    ? "<b>Walked to the end.</b> "+done+" step"+(done===1?"":"s")+" matched the documents"+
+      (bad ? ", "+bad+" did not" : "")+
+      (DEVIATIONS.length ? " · "+DEVIATIONS.length+" off-script action"+
+        (DEVIATIONS.length===1?"":"s") : "")
+    : "Step "+(CURSOR+1)+" of "+SCEN.script.length+
+      (bad ? " · "+bad+" mismatch"+(bad===1?"":"es") : "") +
+      (DEVIATIONS.length ? " · "+DEVIATIONS.length+" off script" : "");
+}
+
+/* ---- rail right -------------------------------------------------------- */
+function renderLog(){
+  const rows = W.events.slice().reverse().map(e =>
+    '<div class="ev '+(e.kind==="sys"?"sys":e.kind==="dev"?"dev":"")+'">' +
+    '<span class="tm">'+hhmm(e.at)+'</span><span class="bo">'+e.body+'</span></div>');
+  $("#log").innerHTML = rows.length ? rows.join("")
+    : '<div class="ev sys"><span class="tm"></span><span class="bo">'+
+      'The event log is the only durable record of what happened here. Nothing yet.</span></div>';
+}
+function findingCard(f){
+  const sev = SEV[f.sev] || SEV.note;
+  const vd = VERDICTS[f.id];
+  return '<div class="find"><div class="fh">'+
+    '<span class="fn">'+esc(f.title)+'</span>'+
+    '<span class="bdg '+sev.t+'">'+esc(sev.l)+'</span></div>'+
+    '<p class="fb">'+f.body+'</p>'+
+    '<p class="fr">'+idt(f.id)+' · '+esc(f.refs||"")+
+      (vd && vd.by ? ' · marked by '+esc(vd.by) : '')+'</p>'+
+    '<div class="fa">'+
+      '<button class="mini'+(vd&&vd.verdict==="real"?" on":"")+'" data-verdict="real" data-fid="'+
+        f.id+'" type="button">Real</button>'+
+      '<button class="mini'+(vd&&vd.verdict==="no"?" on":"")+'" data-verdict="no" data-fid="'+
+        f.id+'" type="button">Not a problem</button>'+
+      '<button class="mini'+(vd&&vd.verdict==="later"?" on":"")+'" data-verdict="later" data-fid="'+
+        f.id+'" type="button">Decide later</button>'+
+    '</div>'+
+    (vd && vd.note ? '<p class="fb" style="color:var(--steel)"><b>Note:</b> '+esc(vd.note)+'</p>' : '')+
+    '</div>';
+}
+function renderFindings(){
+  const all = SEEDED.concat(NOTES);
+  $("#findpane").innerHTML =
+    '<div class="grp">From the build pass<i></i>'+SEEDED.length+'</div>' +
+    SEEDED.map(findingCard).join("") +
+    '<div class="grp">Yours<i></i>'+NOTES.length+'</div>' +
+    (NOTES.length ? NOTES.map(findingCard).join("")
+      : '<div class="find"><p class="fb" style="color:var(--mute)">Nothing yet. '+
+        'Add one from wherever you are standing and it keeps the scenario, the step and '+
+        'the state with it.</p></div>') +
+    '<div class="find"><div class="fh"><span class="fn">Add a finding</span></div>' +
+      '<textarea id="ftxt" placeholder="What is wrong, or what the documents do not answer."></textarea>' +
+      '<div class="fa"><button class="mini" id="fadd" type="button">Record it</button>' +
+      '<span class="fr" id="fstat"></span></div></div>' +
+    (db ? '' : '<div class="find"><p class="fr">Findings are kept on the published page. '+
+      'Here in the file they live only for this session.</p></div>');
+}
+
+/* ---- full render ------------------------------------------------------- */
+function render(){
+  renderRail(); renderSpine(); renderObjects(); renderActions(); renderSteps(); renderLog();
+  renderFindings();
+  $("#scenname").textContent = SCEN ? SCEN.name : "Scenario";
+  $("#scenref").textContent  = SCEN ? SCEN.ref : "";
+  $("#scendek").textContent  = SCEN ? SCEN.dek : "";
+  $("#hidbtn").classList.toggle("on", SHOW_HIDDEN);
+  $("#hidbtn").textContent = SHOW_HIDDEN ? "Hide hidden actions" : "Show hidden actions";
+  const dv = DEVIATIONS.length ? '<div class="note">You are off the script — '+
+    DEVIATIONS.length+' action'+(DEVIATIONS.length===1?"":"s")+
+    ' the document does not list at that point: '+
+    DEVIATIONS.map(d => idt(d)).join(", ")+'. That is allowed; the flow simply stops '+
+    'predicting what comes next.</div>' : "";
+  $("#scenwarn").innerHTML = dv;
+}
+/* ===========================================================================
+   PART 7 — INTERACTION
+   ======================================================================== */
+
+function loadScenario(id, keepConfig){
+  const s = SCENARIOS.find(x => x.id===id) || SCENARIOS[0];
+  const cfg = keepConfig && W ? JSON.parse(JSON.stringify(W.config)) : defaultConfig();
+  W = blankWorld(cfg);
+  SCEN = s; CURSOR = 0; DEVIATIONS = [];
+  s._results = [];
+  s.seed(W);
+  if (!W.role) W.role = "CLERK";
+  buildRoleSelect();
+  log("sys","Scenario <b>"+esc(s.name)+"</b> seeded. "+esc(s.ref)+".");
+  render();
+}
+
+function buildRoleSelect(){
+  $("#role").innerHTML = ROLES.map(r =>
+    '<option value="'+r.id+'"'+(W.role===r.id?" selected":"")+'>'+esc(r.label)+'</option>').join("");
+}
+
+/* ---- generic prompt sheet --------------------------------------------- */
+function openSheet(title, sub, bodyHtml, onOk, okLabel){
+  const dlg = $("#sheet");
+  dlg.innerHTML =
+    '<header><h3>'+esc(title)+'</h3>'+(sub?'<p>'+sub+'</p>':'')+'</header>' +
+    '<div class="fbd">'+bodyHtml+'</div>' +
+    '<footer><button class="btn" type="button" data-x="cancel">Cancel</button>' +
+    '<button class="btn p" type="button" data-x="ok">'+esc(okLabel||"Do it")+'</button></footer>';
+  dlg.onclick = e => {
+    const b = e.target.closest("[data-x]");
+    if (!b) return;
+    if (b.dataset.x==="cancel"){ dlg.close(); return; }
+    const vals = {};
+    dlg.querySelectorAll("[data-k]").forEach(el => {
+      if (el.type==="radio"){ if (el.checked) vals[el.dataset.k] = el.value; }
+      else vals[el.dataset.k] = el.value;
+    });
+    dlg.close();
+    onOk(vals);
+  };
+  dlg.showModal();
+  const first = dlg.querySelector("select,input[type=text]");
+  if (first) first.focus();
+}
+
+function fieldHtml(f){
+  if (f.type==="select")
+    return '<label class="fld"><span>'+esc(f.label)+'</span><select data-k="'+f.k+'">' +
+      f.options.map(([v,l]) => '<option value="'+esc(v)+'"'+
+        (f.def===v?" selected":"")+'>'+esc(l)+'</option>').join("") + '</select></label>';
+  return '<label class="fld"><span>'+esc(f.label)+'</span>' +
+    '<input type="text" data-k="'+f.k+'" value="'+esc(f.def||"")+'"></label>';
+}
+
+/* ---- END_SESSION reconciliation --------------------------------------- */
+const OUTCOMES = {
+  LOAD:  [["LOADED","Loaded"],["NOT_LOADED","Nothing went on"],["PARTIAL","Part loaded"]],
+  UNLOAD:[["UNLOADED","Unloaded"],["NOT_LOADED","Not touched"],["PARTIAL","Part unloaded"]]
+};
+function openReconcile(id, sess){
+  const sup = W.role==="SUPERVISOR";
+  const body =
+    '<p class="fr" style="font-size:11.5px;color:var(--steel)">An outcome is required for '+
+    'every shipment in the set — this is a reconciliation, not a confirmation dialog, and the '+
+    'event log is the only durable record of it. '+
+    (sup ? '' : '<b>PARTIAL</b> needs a supervisor; it is offered but locked.')+'</p>' +
+    '<div class="recon">' + sess.shipments.map(x => {
+      const sh = W.shipments[x.shipment_id];
+      const joined = x.joined_at!==sess.at
+        ? ' · joined '+hhmm(x.joined_at)+', timed from there' : '';
+      return '<div class="rr"><span class="rn">'+esc(x.shipment_id)+
+        ' <span style="font-weight:400;color:var(--steel);font-size:11.5px">'+
+        esc(sh.consignee)+joined+'</span></span><span class="ro">' +
+        OUTCOMES[sess.direction].map(([v,l]) => {
+          const locked = v==="PARTIAL" && !sup;
+          return '<label class="ochip'+(locked?" locked":"")+'">' +
+            '<input type="radio" name="o_'+x.shipment_id+'" data-k="'+x.shipment_id+
+            '" value="'+v+'"'+(locked?" disabled":"")+
+            (v===OUTCOMES[sess.direction][0][0]?" checked":"")+'>'+esc(l)+'</label>';
+        }).join("") + '</span></div>';
+    }).join("") + '</div>';
+  openSheet(ACTIONS[id].label, "Session "+idt(sess.id)+" · "+idt(sess.direction)+
+    " at dock "+esc(sess.dock), body, vals => commit(id, vals), "Record outcomes");
+}
+
+/* ---- perform ----------------------------------------------------------- */
+function performAction(id){
+  const a = ACTIONS[id] || WORLD[id];
+  if (!a) return;
+  const c = ctxOf(W);
+  if (treat(a.gate(W,c)).t!=="A") return;
+  const sess = c.t ? openSession(W,c.t.id) : null;
+  if (a.reconcile && sess) return openReconcile(id, sess);
+  if (a.reconcileIfActive && sess && sess.state==="ACTIVE") return openReconcile(id, sess);
+  const fields = a.form ? a.form(W,c) : [];
+  if (!fields.length) return commit(id, {});
+  openSheet(a.label, esc(a.ref||""), fields.map(fieldHtml).join(""),
+    vals => commit(id, vals), a.tier==="sup" ? "Override" : "Do it");
+}
+
+function commit(id, vals){
+  const a = ACTIONS[id] || WORLD[id];
+  const c = ctxOf(W);
+  if (a.supIf && a.supIf(W,c,vals) && W.role!=="SUPERVISOR"){
+    log("dev","<b>Supervisor confirmation required</b> — a substitution involving loaded freight "+
+      "names another party's freight. Switch role to Supervisor to continue (§5.1).");
+    render(); return;
+  }
+  a.apply(W, c, vals||{});
+  W.clock += 3;
+  afterAction(id);
+  render();
+}
+
+function afterAction(id){
+  const cur = currentStep();
+  if (!cur) return;
+  if (cur.do===id){
+    const issues = cur.check ? (cur.check(W)||[]) : [];
+    SCEN._results[CURSOR] = {status: issues.length ? "fail" : "pass", issues};
+    CURSOR++;
+    /* skip past any step the document expects to be blocked and now is not needed */
+    return;
+  }
+  DEVIATIONS.push(id);
+}
+
+/* Confirm a step the document expects to be refused, then move on. */
+function confirmBlocked(){
+  const cur = currentStep();
+  if (!cur) return;
+  const a = ACTIONS[cur.do] || WORLD[cur.do];
+  const res = treat(a.gate(W, ctxOf(W)));
+  const ok = res.t!=="A";
+  SCEN._results[CURSOR] = {status: ok ? "pass" : "fail",
+    issues: ok ? [] : ["the document expects this to be refused, and it is available"]};
+  log(ok?"sys":"dev", ok
+    ? "Confirmed refused: <b>"+cur.do+"</b> — "+esc(res.why||"")+" ("+res.t+")."
+    : "<b>"+cur.do+"</b> should have been refused here and was not.");
+  CURSOR++;
+  render();
+}
+function skipStep(){
+  if (!currentStep()) return;
+  SCEN._results[CURSOR] = {status:"fail", issues:["skipped"]};
+  CURSOR++;
+  render();
+}
+
+/* ---- config sheet ----------------------------------------------------- */
+function openConfig(){
+  const dlg = $("#cfgsheet");
+  dlg.innerHTML =
+    '<header><h3>Facility configuration</h3>' +
+    '<p>Capabilities generalize by defaulting, not by feature flags (model §1.2). ' +
+    'Turn a dimension off here and it must vanish from every state, screen and prompt — ' +
+    'not merely go unused. Changing anything re-seeds the scenario.</p></header>' +
+    '<div class="fbd"><div class="cfg">' +
+    CONFIG_KEYS.map(k => {
+      const val = W.config[k.k];
+      let ctl;
+      if (k.kind==="flag")
+        ctl = '<span class="sw"><input type="checkbox" id="cfg_'+k.k+'" data-cfg="'+k.k+
+          '"'+(val?" checked":"")+'><i></i></span>';
+      else if (k.kind==="list")
+        ctl = '<select id="cfg_'+k.k+'" data-cfg="'+k.k+'">' + k.opts.map(([v,l]) =>
+          '<option value="'+esc(v)+'"'+((val||[]).join(",")===v?" selected":"")+'>'+
+          esc(l)+'</option>').join("") + '</select>';
+      else
+        ctl = '<select id="cfg_'+k.k+'" data-cfg="'+k.k+'">' + ROLES.map(r =>
+          '<option value="'+r.id+'"'+((val||[]).includes(r.id)?" selected":"")+'>'+
+          esc(r.label)+' and above</option>').join("") + '</select>';
+      return '<div class="cfgrow"><span><span class="ck id">'+esc(k.k)+'</span>'+
+        '<span class="cd">'+esc(k.d)+'</span></span>'+ctl+'</div>';
+    }).join("") +
+    '</div></div>' +
+    '<footer><button class="btn p" type="button" data-close="1">Done</button></footer>';
+  dlg.onclick = e => {
+    if (e.target.closest("[data-close]")) dlg.close();
+  };
+  dlg.onchange = e => {
+    const el = e.target.closest("[data-cfg]");
+    if (!el) return;
+    const k = CONFIG_KEYS.find(x => x.k===el.dataset.cfg);
+    if (k.kind==="flag") W.config[k.k] = el.checked;
+    else if (k.kind==="list") W.config[k.k] = el.value ? el.value.split(",") : [];
+    else {
+      const idx = ROLES.findIndex(r => r.id===el.value);
+      W.config[k.k] = ROLES.slice(idx).map(r => r.id);
+    }
+    W.config._touched = true;
+    const cfg = JSON.parse(JSON.stringify(W.config));
+    const sid = SCEN.id;
+    W = blankWorld(cfg); SCEN = SCENARIOS.find(s => s.id===sid);
+    CURSOR = 0; DEVIATIONS = []; SCEN._results = [];
+    SCEN.seed(W); if (!W.role) W.role = "CLERK";
+    buildRoleSelect();
+    log("sys","Config changed — <b>"+esc(k.k)+"</b>. Scenario re-seeded.");
+    render();
+    openConfig();
+  };
+  dlg.showModal();
+}
+
+/* ---- wiring ------------------------------------------------------------ */
+document.addEventListener("click", e => {
+  const sc = e.target.closest("[data-scen]");
+  if (sc){ loadScenario(sc.dataset.scen, true); return; }
+  const ac = e.target.closest("[data-act]");
+  if (ac && !ac.disabled){ performAction(ac.dataset.act); return; }
+  const ft = e.target.closest("[data-focust]");
+  if (ft){ W.focusTrailer = ft.dataset.focust; W.focusVisit = null; render(); return; }
+  const fv = e.target.closest("[data-focusv]");
+  if (fv){ W.focusVisit = fv.dataset.focusv; W.focusTrailer = null; render(); return; }
+  const vd = e.target.closest("[data-verdict]");
+  if (vd){ setVerdict(vd.dataset.fid, vd.dataset.verdict); return; }
+  if (e.target.id==="fadd"){ addFinding(); return; }
+  if (e.target.id==="cfgbtn"){ openConfig(); return; }
+  if (e.target.id==="hidbtn"){ SHOW_HIDDEN = !SHOW_HIDDEN; render(); return; }
+  if (e.target.id==="resetbtn"){ loadScenario(SCEN.id, true); return; }
+  if (e.target.id==="tab-log" || e.target.id==="tab-find"){
+    const findOn = e.target.id==="tab-find";
+    $("#tab-find").setAttribute("aria-selected", String(findOn));
+    $("#tab-log").setAttribute("aria-selected", String(!findOn));
+    $("#logpane").hidden = findOn; $("#findpane").hidden = !findOn;
+    return;
+  }
+  if (e.target.id==="btn-blocked"){ confirmBlocked(); return; }
+  if (e.target.id==="btn-skip"){ skipStep(); return; }
+});
+document.addEventListener("change", e => {
+  if (e.target.id==="role"){ W.role = e.target.value; render(); }
+});
+
+/* ---- findings persistence --------------------------------------------- */
+function setVerdict(fid, verdict){
+  const prev = VERDICTS[fid];
+  const v = {verdict: prev && prev.verdict===verdict ? null : verdict, at:new Date().toISOString()};
+  if (!v.verdict) delete VERDICTS[fid]; else VERDICTS[fid] = v;
+  renderFindings();
+  if (db){
+    const ref = db.doc("verdicts/"+fid);
+    (v.verdict ? ref.set(v) : ref.delete()).catch(() => {
+      log("sys","Could not save that verdict."); renderLog();
+    });
+  }
+}
+function addFinding(){
+  const el = $("#ftxt");
+  const text = (el && el.value || "").trim();
+  if (!text){ $("#fstat").textContent = "Write something first."; return; }
+  const first = text.split(/(?<=[.!?])\s/)[0];
+  const rec = {
+    sev:"note",
+    title: first.length > 90 ? first.slice(0,88)+"…" : first,
+    body: esc(text),
+    refs: (SCEN ? SCEN.name : "") + (currentStep() ? " · step "+currentStep().id : "") +
+      " · " + (W.focusTrailer||W.focusVisit||""),
+    at: new Date().toISOString()
+  };
+  const id = "N" + Date.now().toString(36);
+  NOTES.push(Object.assign({id}, rec));
+  el.value = "";
+  renderFindings();
+  if (db) db.doc("notes/"+id).set(rec).catch(() => {
+    log("sys","Kept locally — could not save that note."); renderLog(); });
+  else { $("#fstat").textContent = "Kept for this session."; }
+}
+
+/* ---- boot -------------------------------------------------------------- */
+loadScenario("F1", false);
+
+/* Script controls live under the Script header once a scenario is loaded. */
+(function addScriptControls(){
+  const hdr = document.querySelector(".stage .panel:last-of-type > header");
+  if (!hdr) return;
+  const wrap = document.createElement("span");
+  wrap.innerHTML = '<button class="mini" id="btn-blocked" type="button">Confirm refused</button> ' +
+    '<button class="mini" id="btn-skip" type="button">Skip step</button>';
+  hdr.appendChild(wrap);
+})();
+
+(async function connect(){
+  try{
+    const d = window.claude && await window.claude.use("db");
+    if (!d) return;
+    db = d;
+    d.collection("verdicts").onSnapshot(snap => {
+      VERDICTS = {};
+      snap.docs.forEach(doc => { VERDICTS[doc.id] = doc.data(); });
+      renderFindings();
+    }, () => {});
+    d.collection("notes").orderBy("at","asc").onSnapshot(snap => {
+      NOTES = snap.docs.map(doc => Object.assign({id:doc.id}, doc.data()));
+      renderFindings();
+    }, () => {});
+  }catch(err){ /* the page works alone */ }
+})();
+
+
+
+
+
+</script>
