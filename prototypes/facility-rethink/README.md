@@ -27,10 +27,10 @@ Not a UI prototype. It is the document set's own rules, implemented once and exe
 
 ## What you can do with it
 
-Sixteen scenarios: the seven flows of `flows.md` walked step by step against their own
-script, eight exception branches drawn from the stress tests, and one built for §10.12. Each step declares what
-the documents say should change, and the bench marks it matched or not. Going off script is
-allowed; the flow just stops predicting.
+Seventeen scenarios: the seven flows of `flows.md` walked step by step against their own script,
+eight exception branches drawn from the stress tests, and two built for §10.12 and §10.13. Each
+step declares what the documents say should change, and the bench marks it matched or not. Going
+off script is allowed; the flow just stops predicting.
 
 Also: switch role (permission gates are real), flip facility config keys (turning
 `readiness_requirements` to empty must make the dimension vanish everywhere, not merely go
@@ -38,7 +38,7 @@ unused — that is model §1.2 under test), reveal hidden actions with their rea
 world events the flows depend on but no user performs — camera reads landing after the fact,
 dock sensors disagreeing with the records, the daily yard check.
 
-## Custody and the four histories
+## Custody and the five histories
 
 The bench implements model §10.12 rather than only describing it, so the proposal can be judged
 by running it:
@@ -52,30 +52,40 @@ by running it:
 - **`TrailerStay`** is synced from position rather than written per action, so no action can
   forget to open or close one.
 - **`DockStay`** is now a recorded span, not just a field on the trailer.
-- **Every event is stamped** with its actor and with the id of each span it falls inside. An
-  appointment's stamp stops at its own departure, which is what makes the gap visible.
+- **`Visit`** spans sit inside the appointment, each with its own registration, dockpass and
+  detention clock (§10.13) — the only pair in the set that nests cleanly.
+- **Every event is stamped** with its actor and with the id of each span it falls inside, captured
+  as they stood when the action *began*, so an action that closes a span still files under it.
 
-The **History panel** renders all four bracketings on one time axis and lets you switch which one
+The **History panel** renders all five bracketings on one time axis and lets you switch which one
 divides the event list. The overlap claims under the timeline are read off the spans, not
 asserted — and the "inside no appointment" bucket is where the work that happens after the driver
 goes home actually lands.
 
-Start with **"One stay, two appointments"**: one trailer brought by one driver, unloaded days
-later by the yard team, taken away by a second driver. One stay, two appointments, one dock stay,
-three custody spans, and no two of those brackets nesting.
+Two scenarios sit in that group:
+
+- **"One stay, two appointments"** — one trailer brought by one driver, unloaded days later by the
+  yard team, taken away by a second driver on a separate appointment. One stay, two appointments,
+  one dock stay, three custody spans, no two brackets nesting.
+- **"Outbound preload"** — one appointment the driver attends *twice*: brings an empty trailer,
+  leaves, comes back for it loaded. Two visits, two dockpasses, four custody spans, one stay. This
+  is the pattern §4 claimed to cover and could not run.
 
 ## Findings
 
-Thirteen findings are built in, each one a place where the four documents could not all be
-implemented at once, with the sections that disagree named. Eleven have been applied back to
-the documents in `../../docs/facility-rethink/` — model v0.21, matrix v0.11, flows v0.5,
-glossary v0.5 — and the rail marks which. Three things are still open there:
+Fourteen findings are built in — thirteen places where the four documents could not all be
+implemented at once, plus one pattern they did not know about. Twelve have been applied back to
+the documents in `../../docs/facility-rethink/` — model v0.22, matrix v0.12, flows v0.6,
+glossary v0.6 — and the rail marks which. Four things are still open there:
 
 - **§10.10 — does appointment-driven binding need the empty check `ASSIGN_SHIPMENT` has?**
   An operational decision, not an editorial one, so it is written up as an open item with a
   recommendation rather than resolved.
 - **`presence` on a fence crossing.** It is an Appointment dimension, but `COMPLETE_MOVE`
   changes it for a trailer that may have no appointment. A modelling decision.
+- **What §10.13 still leaves open.** Detention becomes per visit, which a carrier billing per
+  appointment will dispute; one appointment window cannot describe two visits hours apart. The
+  pattern now runs; the commercial arithmetic is undecided.
 - **Where a trailer stay starts (F13).** §10.12's first wording said "gate-in to gate-out",
   which cannot describe a company return that never crosses the gate. Opening at the
   perimeter instead makes every yard-occupancy number include trailers outside the fence.
@@ -94,7 +104,7 @@ you are standing — they keep the scenario, the step and the state with them.
 
 ## Source documents
 
-Built against `yard-dock-operations-model.md` v0.21, `flows.md` v0.5,
-`action-availability-matrix.md` v0.11 and `glossary.md` v0.5, which live beside this bench in
+Built against `yard-dock-operations-model.md` v0.22, `flows.md` v0.6,
+`action-availability-matrix.md` v0.12 and `glossary.md` v0.6, which live beside this bench in
 `../../docs/facility-rethink/`. Every section reference in the page points into them, and the
 two should be changed together — that is the whole arrangement.

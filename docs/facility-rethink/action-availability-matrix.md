@@ -1,7 +1,12 @@
 # Action Availability Matrix
 
-**Companion to:** `yard-dock-operations-model.md` v0.21
-**Status:** Draft v0.11 — gate-column corrections; hide-beats-disable; `POSITION_TRAILER`
+**Companion to:** `yard-dock-operations-model.md` v0.22
+**Status:** Draft v0.12 — departure scoped to the driver's own trailer
+**Purpose:** For any trailer in any state, define which actions appear, which appear disabled, which are hidden, and what the user is told — so a screen can be built without re-deriving preconditions from the action catalog.
+
+### Changes from v0.11
+- **`AUTHORIZE_DEPARTURE`'s blocked reasons apply only to the trailer the driver actually has** (§2.6). Scoping them to every leg of the appointment made visit 1 of an outbound preload permanently un-authorizable (model §4 pattern 4a, §10.13).
+- **A driver leaving bobtail is a normal departure**, not a blocked one — the TAKE leg he has not hooked belongs to a later visit.
 
 ### Changes from v0.10
 All five found by implementing this document as an executable rule engine and walking the flows through it. Each is a place where the engine could not satisfy this document and the model at the same time.
@@ -12,7 +17,6 @@ All five found by implementing this document as an executable rule engine and wa
 - **`AUTHORIZE_DEPARTURE` no longer requires the gate** (§2.3). Authorization is a records check; a live load is authorized at its dock. Only `CHECK_OUT` needs the trailer in the lane.
 - **`POSITION_TRAILER` added** (§4), matching the new action in model §5.2. Without it no action moved a driver-attached trailer and four flows had a step with nothing behind it.
 - **"Check the visit in first" → "Admit the visit first"** (§3.2). The old string used the term glossary §2 bans, and contradicted §2.1's wording for the same condition.
-**Purpose:** For any trailer in any state, define which actions appear, which appear disabled, which are hidden, and what the user is told — so a screen can be built without re-deriving preconditions from the action catalog.
 
 ### Changes from v0.6
 - **`OFF_SITE` self-registered column renamed `AT_FACILITY`** (§2.1). Registration requires scanning a QR sign on the property, so a registered driver is never off site.
@@ -255,7 +259,7 @@ The `ENDED → OPEN` column is the sequential-session case: unload, end, assign,
 | Action | | Condition / reason |
 |---|---|---|
 | `DECLARE_TAKE_LEG_CHANGE` | A | Substitution or bobtail. **Supervisor confirmation if the substitute carries freight** (§9 #27) |
-| `AUTHORIZE_DEPARTURE` | A / D | **D**: "Unexpected freight aboard — verify against the manifest" · "Declare fill complete first" · "Seal the trailer first" · "A move is already open for this trailer" · "End or cancel the open session first" |
+| `AUTHORIZE_DEPARTURE` | A / D | **Every reason below applies only to the trailer this visit is leaving with** — the TAKE-leg trailer the driver currently has hooked (model §10.13). A driver who hooked nothing departs bobtail with none of these checks, because he is taking nothing: **A**. **D**: "Unexpected freight aboard — verify against the manifest" · "Declare fill complete first" · "Seal the trailer first" · "A move is already open for this trailer" · "End or cancel the open session first" |
 | `CHECK_OUT` | A / D | **D** "Visit is not authorized to depart". **No camera dependency** — reads are too slow to gate the lane (§9 #28) |
 | `SEAL_TRAILER` | A / D | Last chance before departure |
 | `RESOLVE_IDENTIFICATION` | A / H | Entry reads only. Exit reads land after departure (§2.7) |

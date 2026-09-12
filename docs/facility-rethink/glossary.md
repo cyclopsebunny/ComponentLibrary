@@ -1,14 +1,20 @@
 # Glossary — Canonical Terms
 
-**Companion to:** `yard-dock-operations-model.md` v0.21, `action-availability-matrix.md` v0.11
-**Status:** Draft v0.5 — `tractor` promoted to a stored dimension
+**Companion to:** `yard-dock-operations-model.md` v0.22, `action-availability-matrix.md` v0.12
+**Status:** Draft v0.6 — outbound pickup vs outbound preload; `Visit` as an entity
+**Purpose:** The single source of truth for every entity, state, action, flag, and label. When this document and another disagree, this one is wrong and should be corrected — but until it is, it is what the product, the training material, and support should say.
+
+### Changes from v0.5
+- **Bare "preload" banned** (§2). It meant a state, an outbound preload appointment, and an outbound pickup — and one of those three was called "preload pickup", which is the name that hid the distinction.
+- **Bare "visit" banned** where it means the appointment (§2). An appointment may be attended twice (model §10.13).
+- **`Visit` added as an entity** (§4) and Appointment redefined as a booking containing 1..n visits.
+- **Two industry synonyms split** (§10): picking up someone else's loaded trailer is an *outbound pickup*; bringing your own and returning for it is an *outbound preload*.
 
 ### Changes from v0.4
 - **`tractor` added as a stored trailer dimension** (§5.1). It was only ever listed in §7 as a derived flag under "computed, never stored", and there is nothing in the model to compute it from. Its writers are now named.
 - **`TRACTOR_ATTACHED` stays in §7** as a badge, annotated as a rendering of that dimension rather than a computed flag.
 
 *Found by implementing the document set as an executable rule engine; the engine treated every gate arrival as tractorless and handed live loads to the yard team.*
-**Purpose:** The single source of truth for every entity, state, action, flag, and label. When this document and another disagree, this one is wrong and should be corrected — but until it is, it is what the product, the training material, and support should say.
 
 ---
 
@@ -49,6 +55,8 @@ The highest-value section. Each of these will be said in meetings; none should a
 | **"Dock"** *(bare, for the area)* | Now means one numbered position | "dock area" for the building side; "dock crew"/"dock lead" are fine as roles |
 | **"Dock queue"** *(bare)* | Two queues contain the word | **Dock Assignment Queue** (which dock) vs **Dock Work Queue** (load/unload) |
 | **"Cleaned"** | Only one instance of readiness; others are pre-cool, washout, inspection | `readiness_requirements` / `READY` |
+| **"Preload"** *(bare)* | Three different things: a loaded sealed trailer waiting (a state), an **outbound preload** appointment (§4 pattern 4a), and what used to be called a "preload pickup" but is an **outbound pickup** (pattern 4) | `PRELOAD_STAGED` for the state; "outbound preload" and "outbound pickup" for the two patterns, never interchangeably |
+| **"Visit"** *(bare, meaning the appointment)* | An appointment may be attended more than once, so the two are not the same object (model §10.13) | "appointment" for the booking; "visit" only for one arrival-to-departure span |
 | **"Trailer session"** | "Session" already means one work activity at a dock. A trailer's continuous time on site is a different span entirely, and it can contain several dock sessions across several appointments | `TrailerStay` — proposed in model §10.12, parallel to `DockStay` |
 | **"History"** *(bare)* | Four different spans bracket the same event log, and none nests inside another (model §10.12) | Name the bracketing: trailer-stay history, appointment history, dock-stay history, custody history |
 
@@ -92,7 +100,8 @@ Names that appeared in earlier drafts and no longer exist. Listed so old notes r
 | **Trailer** | The physical asset. Facility-scoped; created on first arrival, not pre-registered |
 | **Shipment** | A unit of freight with a direction. Exists independently of any trailer |
 | **TrailerLoad** | The shipment↔trailer junction. One row per shipment on a trailer; `shipment_id` is **unique** |
-| **Appointment** | A **driver visit** — not a trailer visit. Contains legs |
+| **Appointment** | A **booking** by a driver and tractor — not a trailer visit, and **not necessarily one visit**. Contains legs and 1..n visits (model §10.13) |
+| **Visit** | One physical arrival to departure by a driver. Carries its own registration, dockpass, presence and detention clock. Proposed in model §10.13 |
 | **VisitLeg** | One half of a visit: `BRING` (trailer arrives) or `TAKE` (trailer departs). Each names its own trailer |
 | **Dockpass** | A single-use 5-digit reference to an appointment, issued at registration, redeemed at the gate |
 | **DockAssignment** | A dock held for a visit. May precede admission; released on spot-in, reassignment, or no-show |
@@ -345,7 +354,9 @@ What people say → what the system calls it.
 | "Live unload," "live" | `visit_type = LIVE` |
 | "Drop and hook" | An appointment with both a BRING and a TAKE leg naming different trailers |
 | "Bobtail" | Tractor with no trailer — `NO_TRAILER` on a leg or exit read |
-| "Preload," "pre-stage" | Outbound shipment `STAGED` on a sealed trailer |
+| "Preload," "pre-stage" *(the state)* | Outbound shipment `STAGED` on a sealed trailer |
+| "Preload" *(the appointment)* | **Outbound preload** — one appointment, two visits: brings an empty trailer, returns for it loaded (§4 pattern 4a) |
+| "Picking up a preload," "grabbing a load" | **Outbound pickup** — one visit, taking a trailer another appointment loaded (§4 pattern 4) |
 | "Empty," "MT" | Load state `EMPTY` |
 | "Detention," "waiting time" | Time from the detention start timestamp to `CHECK_OUT` |
 | "Yard check," "yard audit," "trailer count" | `YardCheck` |

@@ -1,14 +1,19 @@
 # Operational Flows — States, Flags, and Actions by Step
 
-**Companion to:** `yard-dock-operations-model.md` v0.21, `action-availability-matrix.md` v0.11, `glossary.md` v0.5
-**Status:** Draft v0.5 — every step now names an action that exists
+**Companion to:** `yard-dock-operations-model.md` v0.22, `action-availability-matrix.md` v0.12, `glossary.md` v0.6
+**Status:** Draft v0.6 — flow 4 renamed; flow 4a added
+**Purpose:** Walk each appointment type from start to finish, showing at every step which states change, which flags can appear, which actions are available, and who acts.
+
+### Changes from v0.5
+- **Flow 4 renamed "Outbound pickup".** It takes a trailer that a *different* appointment loaded. Calling it a preload pickup conflated it with flow 4a.
+- **Flow 4a added — outbound preload.** One appointment, **two visits**: the driver brings an empty trailer, leaves, and returns for it loaded. The spine runs P1 and P5 twice, which no other flow does.
+- **§10's phase table gains a column**, because "which phases" was no longer enough — flow 4a repeats two of them.
 
 ### Changes from v0.4
 - **`POSITION_TRAILER` named at P3** in flows 1, 2, 3 and 5. Those steps previously named no action at all, or only the action that is *hidden* there — nothing in the catalog moved a driver-attached trailer.
 - **P1a sets `tractor → ATTACHED`.** A trailer driven in is hooked from arrival until `DROP_TRAILER`; no step said so, and an implementation that misses it hands every live load to the yard team.
 - **Flow 6 P1 names `ADMIT`** rather than "RF access", which was a description and not an action.
 - **The spine's P5 ends at presence `DEPARTED`,** not `CHECKED_OUT` — the latter is not a value of any dimension (glossary §5.4).
-**Purpose:** Walk each appointment type from start to finish, showing at every step which states change, which flags can appear, which actions are available, and who acts.
 
 ---
 
@@ -18,7 +23,9 @@ The model is organized by **structure** — entities, dimensions, actions. This 
 
 ### 1.1 The flows are not separate pipelines
 
-Every flow below is a **composition of the same six phases**, not a distinct process. That is deliberate and load-bearing: it is why nine visit patterns need two fields (`visit_type`, `party_type`) rather than nine implementations.
+Every flow below is a **composition of the same six phases**, not a distinct process. That is deliberate and load-bearing: it is why ten visit patterns need three fields (`visit_type`, `party_type`, `expected_visits`) rather than ten implementations.
+
+*`expected_visits` is new in v0.6. Flow 4a repeats P1 and P5, and a flow that revisits a phase is the first thing the "subset of the spine" framing did not anticipate — the spine is still right, but a flow is a subset **with repeats**, not a straight prefix.*
 
 So this document defines the **spine once** (§2) and then, per flow, shows only:
 
@@ -122,9 +129,11 @@ Trailer arrives loaded, is dropped, driver leaves. Unloading happens later, on y
 
 ---
 
-## 6. Flow 4 — Outbound drop / preload pickup
+## 6. Flow 4 — Outbound pickup
 
-Driver arrives bobtail, hooks a staged preload, leaves. *(§4 pattern 4)*
+Driver arrives bobtail, hooks a trailer that **another appointment loaded**, leaves. One visit. *(§4 pattern 4)*
+
+**Not the same as flow 4a below.** This driver takes someone else's staged trailer; a preload driver brings his own and comes back for it. Both were called "preload pickup" until v0.6, and the name hid a real difference in the booking, the credential count, and the detention arithmetic.
 
 | Step | Changes | Flags | Actions | Actor |
 |---|---|---|---|---|
@@ -137,6 +146,51 @@ Driver arrives bobtail, hooks a staged preload, leaves. *(§4 pattern 4)*
 | **P6** Exit read | Departure time backfilled | `UNDECLARED_TRAILER_EXIT` | `CORRECT_DEPARTURE` | System |
 
 **P3 is where the wrong trailer gets taken.** Self-service pickup from a yard of similar trailers, no guard watching the hook. If the driver takes a different one and says so, that is `DECLARE_TAKE_LEG_CHANGE` at P5a — normal, logged, with a hard warning if the substitute carries freight. If they say nothing, P6 catches it after departure.
+
+---
+
+## 6a. Flow 4a — Outbound preload
+
+Driver brings an **empty** trailer, drops it, and **leaves the facility**. The trailer is loaded on your schedule. The **same driver returns on the same appointment** and takes it away. *(§4 pattern 4a)*
+
+**One appointment, two visits.** This is the only flow that runs P1 and P5 twice, and the only one where the appointment outlives the driver's first departure.
+
+### Visit 1 — bringing it
+
+| Step | Changes | Flags | Actions | Actor |
+|---|---|---|---|---|
+| **P0** Appointment booked with `expected_visits = 2`; outbound shipments planned on the TAKE leg. Both legs name the same trailer | Shipment `PLANNED` | — | — | Planner |
+| **P1** Registers and is admitted, **first dockpass** | registration → `SELF_REGISTERED`; presence → `ON_SITE`; tractor → `ATTACHED`; TAKE-leg rows created `ASSIGNED` | `TRACTOR_ATTACHED` | `SELF_REGISTER`, `ADMIT` | Driver / gate |
+| **P2** Destination set — a spot to leave it in | destination → `YARD_ASSIGNED` | — | `ASSIGN_YARD` | Dispatcher |
+| **P3a** Drives to the spot | position → yard spot | `TRACTOR_ATTACHED` | `POSITION_TRAILER` | Driver |
+| **P3b** **Tractor detaches** | Yard-team responsibility; destination → `AWAITING_ASSIGNMENT` | `DROPPED_NO_DESTINATION` | `DROP_TRAILER` | Driver |
+| **P5a** Authorized to leave **bobtail** — *the TAKE leg is not checked, because he is not taking anything* | presence → `AUTHORIZED_TO_DEPART` | — | `AUTHORIZE_DEPARTURE` | Clerk |
+| **P5b** Departs. **Visit 1 ends; the appointment does not.** A second visit slot opens | Visit 1 span closed; registration and dockpass reset for visit 2 | `PICKUP_NOT_TAKEN` must **not** fire — the return is planned | `CHECK_OUT` | Gate |
+
+### — the facility loads it, with no driver attached —
+
+| Step | Changes | Flags | Actions | Actor |
+|---|---|---|---|---|
+| **P2′** A dock frees up | destination → `DOCK_ASSIGNED` | `AWAITING_DOCK` | `ASSIGN_DOCK` | Dispatcher |
+| **P3′** Now a move task exists | MoveTask `PENDING` → `COMPLETED`; position → `DOCK` | `NEEDS_MOVE` | Move actions | Yard team |
+| **P4** Loaded, fill declared, sealed | Rows → `ON_BOARD`; `fill_declaration → COMPLETE`; shipments → `STAGED` | `PRELOAD_STAGED` | Session actions, `DECLARE_FILL_COMPLETE`, `SEAL_TRAILER` | Dock crew |
+| **P3″** Pulled off the dock to a yard spot | position → yard spot | `READY_TO_PULL`, then `PRELOAD_STAGED` | `PULL_FROM_DOCK`, move actions | Yard team |
+
+### Visit 2 — collecting it
+
+| Step | Changes | Flags | Actions | Actor |
+|---|---|---|---|---|
+| **P1′** Same driver returns, registers again, **second dockpass** | Visit 2: registration → `SELF_REGISTERED`; presence → `ON_SITE` | — | `SELF_REGISTER`, `ADMIT` | Driver / gate |
+| **P3‴** Hooks the trailer he brought | tractor → `ATTACHED`; any pending move cancelled | `TRACTOR_ATTACHED` | `HOOK_TRAILER` | Driver |
+| **P5a′** Authorized — **now** the TAKE leg is checked, because now he is taking it | presence → `AUTHORIZED_TO_DEPART` | `READY_TO_DEPART` | `AUTHORIZE_DEPARTURE` | Clerk |
+| **P5b′** Departs loaded. Appointment closes with the visit | Shipments → `DEPARTED`; trailer stay closes | — | `CHECK_OUT` | Gate |
+| **P6** Exit read | Departure time backfilled | `UNDECLARED_TRAILER_EXIT` | `CORRECT_DEPARTURE` | System |
+
+**Why this is not flow 2.** The legs are identical to an outbound live load — BRING empty, TAKE loaded, same trailer. The difference is entirely in the gate crossings, and that is what §10.13 of the model is about. Read the two flows side by side: every row of P4 here happens with nobody waiting, which is the whole commercial point of a preload.
+
+**Why this is not flow 4.** Flow 4's driver takes a trailer that a *different* appointment loaded, in one visit. Here the driver supplies the trailer and comes back for his own freight. Different booking, different credential count, different detention arithmetic.
+
+**The three things to watch.** Visit 1's departure authorization must not test the TAKE leg (§5.1). The second visit needs its own dockpass, because the first was consumed. And `PICKUP_NOT_TAKEN` must stay quiet at P5b — a planned return is not a failed pickup.
 
 ---
 
@@ -157,7 +211,7 @@ This is Flow 3's P1–P3b and Flow 4's P3–P5b, in one appointment with two leg
 
 ---
 
-## 8. Flow 6 — Company driver takes a preload
+## 8. Flow 6 — Company driver takes a staged load
 
 Employee takes a company trailer out on a route. *(§4 pattern 8 — optional)*
 
@@ -195,20 +249,22 @@ The return leg of the fleet loop. *(§4 pattern 9 — optional)*
 
 ## 10. Which phases each flow uses
 
-| Flow | P0 | P1 | P2 | P3 | P4 | P5 | P6 |
-|---|---|---|---|---|---|---|---|
-| 1 · Inbound live | ✔ | ✔ | ✔ | driver | unload | ✔ | ✔ |
-| 2 · Outbound live | ✔ | ✔ | ✔ | driver | load | ✔ | ✔ |
-| 3 · Inbound drop | ✔ | ✔ | **twice** | driver, then **yard team** | unload | ✔ early | ✔ |
-| 4 · Preload pickup | ✔ | ✔ | — | driver hooks | — | ✔ | ✔ |
-| 5 · Drop & hook | ✔ | ✔ | ✔ for T1 | both | later, on T1 | ✔ on T2 | ✔ |
-| 6 · Company pickup | ✔ | RF | — | driver hooks | — | relaxed | ✔ |
-| 7 · Company return | next cycle | **none** | later | — | — | — | starts here |
+| Flow | Visits | P0 | P1 | P2 | P3 | P4 | P5 | P6 |
+|---|---|---|---|---|---|---|---|---|
+| 1 · Inbound live | 1 | ✔ | ✔ | ✔ | driver | unload | ✔ | ✔ |
+| 2 · Outbound live | 1 | ✔ | ✔ | ✔ | driver | load | ✔ | ✔ |
+| 3 · Inbound drop | 1 | ✔ | ✔ | **twice** | driver, then **yard team** | unload | ✔ early | ✔ |
+| 4 · Outbound pickup | 1 | ✔ | ✔ | — | driver hooks | — | ✔ | ✔ |
+| 4a · Outbound preload | **2** | ✔ | **twice** | **twice** | driver, **yard team**, driver | load | **twice** | ✔ |
+| 5 · Drop & hook | 1 | ✔ | ✔ | ✔ for T1 | both | later, on T1 | ✔ on T2 | ✔ |
+| 6 · Company pickup | 1 | ✔ | RF | — | driver hooks | — | relaxed | ✔ |
+| 7 · Company return | — | next cycle | **none** | later | — | — | — | starts here |
 
 Two things this table makes obvious that prose does not:
 
 - **Flow 3 runs P2 twice** — once for the driver's drop point, again when a dock frees up. It is the only flow where the same phase recurs after the visit closes.
 - **Flow 7 has no P1 at all**, which is why every arrival path in the model had to be revisited to accommodate it.
+- **Flow 4a repeats P1 and P5**, which nothing else does. A flow is a subset of the spine *with repeats*, not a prefix of it — and the Visits column is now the first thing to read, because it is what separates 4a from flow 2 and from flow 4.
 
 ---
 

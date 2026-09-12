@@ -376,6 +376,7 @@ dialog footer{padding:11px 15px; border-top:1px solid var(--line); display:flex;
 .bar.stay{background:var(--info-bg); border-color:var(--info-line); color:var(--info)}
 .bar.appt{background:var(--accent-bg); border-color:var(--accent); color:var(--accent)}
 .bar.dock{background:var(--ok-bg); border-color:var(--ok-line); color:var(--ok)}
+.bar.visit{background:var(--violet-soft,var(--surface-3)); border-color:var(--nav); color:var(--nav)}
 .bar.cust{background:var(--surface-3); border-color:var(--line-2); color:var(--ink-2)}
 .bar.cust.yard{background:var(--bad-bg); border-color:var(--bad-line); color:var(--bad)}
 .bar.live{border-right-style:dashed}
@@ -406,7 +407,7 @@ dialog footer{padding:11px 15px; border-top:1px solid var(--line); display:flex;
 <header class="top">
   <span class="brand">
     <b>Yard Flow Bench</b>
-    <span>Walks the yard &amp; dock document set against itself — model v0.21 · flows v0.5 · matrix v0.11 · glossary v0.5</span>
+    <span>Walks the yard &amp; dock document set against itself — model v0.22 · flows v0.6 · matrix v0.12 · glossary v0.6</span>
   </span>
   <span class="topctl">
     <label for="role">Acting as</label>
@@ -683,7 +684,14 @@ function mkVisit(w, o){
     legs:[], dockpass:null, dockpass_consumed:false,
     arrived_at:null, admitted_at:null, on_site_since:null,
     window:[9*60, 11*60], turned_away:false, departed_at:null,
-    held_outside:false, substituted:false
+    held_outside:false, substituted:false,
+    /* An appointment is a BOOKING, not one visit. An outbound preload is one
+       appointment with two: the driver brings an empty trailer, leaves, and
+       comes back for it loaded. registration / presence / dockpass / the
+       timestamps above are the CURRENT visit's working slot; completed spans
+       move to visit_log. See model §10.13. */
+    expected_visits:1, visit_n:1, visit_log:[],
+    first_arrived_at:null, closed_at:null
   }, o);
   w.visits[v.id] = v; return v;
 }
@@ -912,11 +920,28 @@ function flagsOf(w, tid){
   return [...new Set(f)];
 }
 
+/* Which trailer is this visit actually leaving with? Custody answers it, so
+   nothing has to be bookkept: if the driver is hooked to the TAKE leg's
+   trailer he is taking it, and if he dropped it he leaves bobtail and the TAKE
+   leg is a later visit's business (model §10.13). */
+function departingTrailer(w, v){
+  const tl = takeLeg(w,v);
+  if (tl && tl.trailer_id && hasTractor(w, tl.trailer_id)) return w.trailers[tl.trailer_id];
+  return null;
+}
+/* Is the driver holding anything at all right now? */
+function holdsAnything(w, v){
+  return v.legs.some(l => l.trailer_id && hasTractor(w, l.trailer_id));
+}
+
 /* READY_TO_DEPART / AUTHORIZE_DEPARTURE share one predicate so the flag and
    the action can never disagree (glossary §7, model §5.1). */
 function readyToDepart(w, v, tid){
   const t = w.trailers[tid]; if(!t) return false;
   const tl = takeLeg(w,v); if(!tl || tl.trailer_id!==tid) return false;
+  /* and the driver has actually got it — a trailer he dropped is not
+     "ready to depart", it is waiting for a later visit (§10.13) */
+  if (!hasTractor(w,tid)) return false;
   const rows = rowsOf(w,tid);
   const outboundAboard = rows.some(r => r.direction==="OUTBOUND" && r.link_state==="ON_BOARD");
   if (outboundAboard){
@@ -958,6 +983,10 @@ function displayStatus(w, tid){
    different brackets at once and no bracket contains another. Stamping at write
    time is what lets the history be re-divided without re-deriving anything. */
 let ACTOR = "system";
+/* Spans as they stood when the current action BEGAN. An action is a point in
+   time: its events belong to the visit that was open when the clerk clicked,
+   even if the action itself closes that visit. */
+let SPAN_APPT = null, SPAN_VISIT = null, SPAN_SET = false;
 function log(kind, body){
   const t = W.focusTrailer ? W.trailers[W.focusTrailer] : null;
   const c = ctxOf(W);
@@ -968,11 +997,14 @@ function log(kind, body){
   /* An appointment's bracket ends when the visit does. Stamping a departed
      visit on later events is what made the gap in flow 3 look like it was
      still inside the appointment — it is not, and that is §10.12's point. */
-  const liveAppt = c.v && !c.v.departed_at && !c.v.turned_away ? c.v : null;
+  const liveAppt = c.v && !c.v.closed_at && !c.v.turned_away ? c.v : null;
+  const inVisit = liveAppt && liveAppt.arrived_at!=null && liveAppt.departed_at==null;
   W.events.push({at:W.clock, kind, body, actor:ACTOR,
     trailer_id: tr ? tr.id : null,
     stay_id: stay ? stay.id : null,
-    appt_id: liveAppt ? liveAppt.id : null,
+    appt_id: SPAN_SET ? SPAN_APPT : (liveAppt ? liveAppt.id : null),
+    visit_id: SPAN_SET ? SPAN_VISIT
+      : (inVisit ? liveAppt.id+"#"+liveAppt.visit_n : null),
     dock_stay_id: ds ? ds.id : null,
     custody_id: cu ? cu.id : null});
 }
@@ -1072,6 +1104,7 @@ SELF_REGISTER:{
     v.registration = "SELF_REGISTERED";
     v.presence = "AT_FACILITY";
     v.arrived_at = w.clock;
+    if (v.first_arrived_at==null) v.first_arrived_at = w.clock;
     v.dockpass = String(10000 + Math.floor(Math.random()*89999));
     log("act","<b>SELF_REGISTER</b> — QR sign scanned at the facility. Dockpass "+v.dockpass+" issued.");
     const bl = bringLeg(w,v);
@@ -1094,6 +1127,7 @@ RECORD_ARRIVAL:{
   },
   apply(w,c){
     c.v.presence = "AT_GATE"; c.v.arrived_at = w.clock;
+    if (c.v.first_arrived_at==null) c.v.first_arrived_at = w.clock;
     log("act","<b>RECORD_ARRIVAL</b> — truck noted in the gate lane.");
   }
 },
@@ -1164,6 +1198,7 @@ REGISTER_AND_ADMIT:{
     const v = c.v;
     v.registration = "REGISTERED_AT_GATE";
     if (v.arrived_at==null) v.arrived_at = w.clock;
+    if (v.first_arrived_at==null) v.first_arrived_at = w.clock;
     const bl = bringLeg(w,v);
     if (bl && !bl.trailer_id && vals.number) bindLeg(w,v,bl,vals.number,"GUARD");
     v.presence = "AT_GATE";
@@ -1292,9 +1327,14 @@ AUTHORIZE_DEPARTURE:{
     const f = [];
     const unbound = v.legs.filter(l => !l.trailer_id && !l.bobtail);
     if (unbound.length) f.push(D(CLS.DATA, WHY.IDENTIFY));
-    const tl = takeLeg(w,v);
-    if (tl && tl.trailer_id){
-      const t = w.trailers[tl.trailer_id];
+    /* Scoped to the trailer this visit is leaving with, not to every leg of
+       the appointment. On visit 1 of an outbound preload the TAKE leg names a
+       trailer that is sitting here empty; checking it would block a departure
+       that is entirely legitimate (§10.13). */
+    const dt = departingTrailer(w,v);
+    if (dt){
+      const tl = takeLeg(w,v);
+      const t = dt;
       f.push(...svc(w,t));
       const rows = rowsOf(w,t.id);
       const expected = (tl.expected_shipment_ids||[]);
@@ -1318,8 +1358,16 @@ AUTHORIZE_DEPARTURE:{
     return f;
   },
   apply(w,c){
-    c.v.presence = "AUTHORIZED_TO_DEPART"; c.v.authorized_at = w.clock;
-    log("act","<b>AUTHORIZE_DEPARTURE</b> — legs verified, freight matched. <b>presence → AUTHORIZED_TO_DEPART</b>.");
+    const v = c.v, dt = departingTrailer(w,v);
+    v.presence = "AUTHORIZED_TO_DEPART"; v.authorized_at = w.clock;
+    log("act","<b>AUTHORIZE_DEPARTURE</b> — "+(dt
+      ? "leaving with <b>"+dt.number+"</b>; freight matched, seal and fill checked."
+      : "leaving <b>bobtail</b> — nothing checked against a TAKE leg, because this visit is "+
+        "not taking anything.")+" <b>presence → AUTHORIZED_TO_DEPART</b>.");
+    const tl = takeLeg(w,v);
+    if (!dt && tl && tl.trailer_id && v.visit_n < v.expected_visits)
+      log("sys","The TAKE leg on <b>"+w.trailers[tl.trailer_id].number+
+        "</b> is still outstanding — it belongs to visit "+(v.visit_n+1)+" of this appointment.");
   }
 },
 
@@ -1335,9 +1383,10 @@ CHECK_OUT:{
   apply(w,c){
     const v = c.v;
     const tl = takeLeg(w,v);
+    const dt = departingTrailer(w,v);
     v.presence = "DEPARTED"; v.departed_at = w.clock;
-    if (tl && tl.trailer_id){
-      const t = w.trailers[tl.trailer_id];
+    if (dt){
+      const t = dt;
       releasePosition(w,t);
       closeCustody(w, t.id, "departed");
       t.position = "OFF_SITE"; t.destination = "NONE";
@@ -1346,12 +1395,34 @@ CHECK_OUT:{
       });
       log("act","<b>CHECK_OUT</b> — <b>"+t.number+"</b> departed; outbound shipments <b>DEPARTED</b>.");
     } else {
-      log("act","<b>CHECK_OUT</b> — departed bobtail. Exit read will return <b>NO_TRAILER</b>.");
+      log("act","<b>CHECK_OUT</b> — departed bobtail. Exit read will return <b>NO_TRAILER</b>."+
+        (tl && tl.trailer_id ? " <b>"+w.trailers[tl.trailer_id].number+
+          "</b> stays — the driver never hooked it." : ""));
       const expectedTake = v.legs.find(l => l.kind==="TAKE" && l.intended_trailer);
-      if (expectedTake) v.pickup_not_taken = true;
+      if (expectedTake || (tl && tl.trailer_id && v.visit_n >= v.expected_visits))
+        v.pickup_not_taken = true;
     }
     log("sys","Engine sets <b>presence → DEPARTED</b> (glossary §5.4). The action catalog says "+
       "<b>CHECKED_OUT</b>, which is not a value of that dimension — finding F3.");
+
+    /* Close this VISIT span. The APPOINTMENT only closes with it if there is
+       nothing left for the driver to come back for (§10.13). */
+    v.visit_log.push({n:v.visit_n, arrived_at:v.arrived_at, admitted_at:v.admitted_at,
+      departed_at:w.clock, took: dt ? dt.number : null});
+    const outstanding = tl && tl.trailer_id && (!dt || dt.id!==tl.trailer_id);
+    if (outstanding && v.visit_n < v.expected_visits){
+      v.visit_n++;
+      v.registration = "NOT_REGISTERED"; v.presence = "OFF_SITE";
+      v.dockpass = null; v.dockpass_consumed = false;
+      v.arrived_at = null; v.admitted_at = null; v.on_site_since = null;
+      v.departed_at = null; v.authorized_at = null; v.held_outside = false;
+      log("sys","<b>Visit "+(v.visit_n-1)+" of "+v.expected_visits+" is over; the appointment "+
+        "is not.</b> A fresh visit slot opens — new registration, <b>a new dockpass</b> "+
+        "(the last one was single-use), its own detention clock. This is the machinery "+
+        "§2.4 does not have, because it says an appointment <i>is</i> a driver visit (§10.13).");
+    } else {
+      v.closed_at = w.clock;
+    }
   }
 },
 
@@ -2550,6 +2621,8 @@ function primaryFor(w, ctx){
   if (v && takeLeg(w,v) && takeLeg(w,v).trailer_id &&
       readyToDepart(w,v,takeLeg(w,v).trailer_id) && avail("AUTHORIZE_DEPARTURE"))
     return "AUTHORIZE_DEPARTURE";
+  if (v && v.presence==="ON_SITE" && !holdsAnything(w,v) && avail("AUTHORIZE_DEPARTURE"))
+    return "AUTHORIZE_DEPARTURE";
   if (v && v.presence==="AUTHORIZED_TO_DEPART" && avail("CHECK_OUT")) return "CHECK_OUT";
   if (t && t.identity_confidence==="DISPUTED" && avail("RESOLVE_IDENTIFICATION"))
     return "RESOLVE_IDENTIFICATION";
@@ -2760,9 +2833,9 @@ const SCENARIOS = [
   ]
 },
 {
-  id:"F4", group:"The seven flows", name:"4 · Preload pickup", sub:"DROP · arrives bobtail",
+  id:"F4", group:"The seven flows", name:"4 · Outbound pickup", sub:"DROP · one visit, someone else's trailer",
   ref:"flows §6 · pattern 4",
-  dek:"Driver arrives bobtail, hooks a staged preload, leaves. No BRING leg at all — which is where the registration and admission preconditions stop describing what happens.",
+  dek:"Driver arrives bobtail, hooks a trailer that was loaded under a different appointment, leaves. One visit, one TAKE leg, no BRING leg — which is where the registration and admission preconditions stop describing what happens. Not to be confused with an outbound preload, where the same driver brings the trailer and comes back for it.",
   phases:["P0","P1","P3","P5","P6"], skip:["P2","P4"],
   seed(w){
     baseYard(w);
@@ -2888,6 +2961,81 @@ const SCENARIOS = [
 },
 
 /* ---------------- exception branches ----------------------------------- */
+{
+  id:"H2", group:"Custody and histories", name:"Outbound preload — one appointment, two visits",
+  sub:"model §10.13 · the pattern §4 misses",
+  ref:"model §10.13 · §4",
+  dek:"The driver brings an empty trailer, drops it, and leaves. The facility loads it. He comes back later and takes the same trailer away. One appointment, two visits, one trailer on both legs. Its leg structure is identical to an outbound live load — only the number of gate crossings differs, and that is the fact the model has no field for. Under the unamended §5.1 this cannot be walked at all: visit 1 could never be authorized to depart.",
+  phases:["P0","P1","P2","P3","P4","P5","P6"],
+  seed(w){
+    baseYard(w);
+    ["SHP-1701","SHP-1702"].forEach((id,i) => mkShipment(w,{id, direction:"OUTBOUND",
+      consignee:["Restaurant Depot 19","Sysco Phoenix"][i]}));
+    const t = mkTrailer(w,{id:"TP", number:"53411", carrier:"ESTES"});
+    t.first_visit = false;
+    mkVisit(w,{id:"V1", visit_type:"DROP", expected_visits:2, window:[8*60,16*60], legs:[
+      {kind:"BRING", trailer_id:null, hint_number:"53411", carrier:"ESTES",
+       expected_shipment_ids:[]},
+      {kind:"TAKE", trailer_id:null, same_as_bring:true,
+       expected_shipment_ids:["SHP-1701","SHP-1702"]}]});
+    w.focusVisit = "V1";
+  },
+  script:[
+    st("v1a","P1","SELF_REGISTER","Driver","**Visit 1.** Registers with the empty trailer. Both legs name it — the same structure an outbound live load has.","model §10.13",
+      w => { const v=w.visits.V1, o=[];
+        if (v.visit_n!==1) o.push("this should be visit 1");
+        const bl=bringLeg(w,v), tl=takeLeg(w,v);
+        if (!bl.trailer_id || bl.trailer_id!==tl.trailer_id)
+          o.push("both legs should name the same trailer");
+        return o; }),
+    st("v1b","P1","ADMIT","Gate","Admitted; the dockpass is consumed.","model §5.1"),
+    st("v1c","P2","ASSIGN_YARD","Dispatcher","A spot to leave it in.","model §5.2"),
+    st("v1d","P3","POSITION_TRAILER","Driver","He parks it.","model §5.2"),
+    st("v1e","P3","DROP_TRAILER","Driver","Tractor detaches. **This is the moment the model cannot see** — the TAKE leg still names this trailer, and it is now sitting here empty.","model §10.13",
+      w => hasTractor(w,"TP") ? ["custody should be closed"] : []),
+    st("v1f","P5","AUTHORIZE_DEPARTURE","Clerk","Authorized to leave bobtail. Unamended, §5.1 would compare the TAKE leg's expected freight against an empty trailer and refuse.","model §10.13",
+      w => w.visits.V1.presence==="AUTHORIZED_TO_DEPART" ? []
+        : ["visit 1 must be able to depart"]),
+    st("v1g","P5","CHECK_OUT","Gate","**Visit 1 ends; the appointment does not.** A second visit slot opens with a fresh registration and a new dockpass.","model §10.13",
+      w => { const v=w.visits.V1, o=[];
+        if (v.visit_n!==2) o.push("a second visit should have opened");
+        if (v.presence!=="OFF_SITE") o.push("the new visit should start at OFF_SITE");
+        if (v.dockpass) o.push("the consumed dockpass must not carry over");
+        if (w.trailers.TP.position==="OFF_SITE") o.push("the trailer must stay on site");
+        if (!stayOpen(w,"TP")) o.push("the trailer stay must remain open");
+        return o; }),
+    st("gap","P2","@TICK","—","The facility now has the trailer and the driver is gone.","model §10.13"),
+    st("d1","P2","ASSIGN_DOCK","Dispatcher","A dock for loading.","model §5.2"),
+    st("d2","P3","CREATE_MOVE_TASK","Dispatcher","No tractor — so now it is yard-team work.","model §3.5"),
+    st("d3","P3","ASSIGN_MOVE_TASK","Dispatcher","To a spotter.","model §5.2"),
+    st("d4","P3","START_MOVE","Spotter","Moving.","model §5.2"),
+    st("d5","P3","COMPLETE_MOVE","Spotter","Spotted at the dock.","model §5.2"),
+    st("d6","P4","OPEN_SESSION","Dock lead","Load session, pre-populated from the TAKE leg's rows.","model §5.3"),
+    st("d7","P4","START_SESSION","Dock crew","Loading.","model §5.3"),
+    st("d8","P4","END_SESSION","Dock lead","Both loaded.","model §5.3"),
+    st("d9","P4","DECLARE_FILL_COMPLETE","Dock lead","Fill complete.","model §5.3"),
+    st("d10","P4","SEAL_TRAILER","Dock lead","Sealed and staged, waiting for its own driver to come back.","model §5.4"),
+    st("d11","P3","PULL_FROM_DOCK","Dock lead","Off the dock so it is not blocking one.","model §5.3"),
+    st("d12","P3","ASSIGN_MOVE_TASK","Dispatcher","Spotter again.","model §5.2"),
+    st("d13","P3","START_MOVE","Spotter","Moving to a yard spot.","model §5.2"),
+    st("d14","P3","COMPLETE_MOVE","Spotter","Staged in the yard.","model §5.2"),
+    st("v2a","P1","SELF_REGISTER","Driver","**Visit 2.** The same driver returns and registers again — a second dockpass on the same appointment.","model §10.13",
+      w => { const v=w.visits.V1;
+        return v.visit_n===2 && v.dockpass ? [] : ["visit 2 needs its own dockpass"]; }),
+    st("v2b","P1","ADMIT","Gate","Admitted a second time.","model §5.1"),
+    st("v2c","P3","HOOK_TRAILER","Driver","Hooks the trailer he brought — now loaded and sealed. Custody span three.","model §10.12"),
+    st("v2d","P5","AUTHORIZE_DEPARTURE","Clerk","**Now** the TAKE leg is checked, because now he is taking it.","model §5.1",
+      w => w.visits.V1.presence==="AUTHORIZED_TO_DEPART" ? [] : ["should authorize on visit 2"]),
+    st("v2e","P5","CHECK_OUT","Gate","Leaves with it. Now the appointment closes too. Switch the History bracketing between Appointment and Visit to see the difference.","model §10.13",
+      w => { const v=w.visits.V1, o=[];
+        if (v.visit_log.length!==2) o.push("the appointment should record two visits");
+        if (v.closed_at==null) o.push("the appointment should be closed now");
+        if (w.trailers.TP.position!=="OFF_SITE") o.push("the trailer should have departed");
+        if (w.shipments["SHP-1701"].status!=="DEPARTED") o.push("its freight should be DEPARTED");
+        if (stayOpen(w,"TP")) o.push("the trailer stay should close with it");
+        return o; })
+  ]
+},
 {
   id:"H1", group:"Custody and histories", name:"One stay, two appointments",
   sub:"model §10.12 · three custody spans",
@@ -3244,7 +3392,10 @@ const SEEDED = [
  refs:"model §6.1 · model §3.5 · model §5.1 · model §5.2 · glossary §7 · stress tests 1-vi, 12"},
 {id:"F13", sev:"gap", title:"A trailer stay defined as “gate-in to gate-out” cannot describe a company return",
  body:"Found by implementing §10.12 rather than by reading it — so this one is against text written in this round, not against the original set. §10.12 defines <span class=\"id\">TrailerStay</span> as “one continuous occupancy of the facility by one trailer, <b>gate-in to gate-out</b>”. Pattern 9 never crosses the gate: a company driver parks in an <i>outside</i> lot and goes home, and the trailer may sit there for a day before a yard check finds it. Under the literal definition no stay ever opens, so its dwell is invisible and the readiness work that follows falls inside no bracket at all.<br><br>The bench opens the stay on first occupancy of <i>any</i> facility position and flags it when that happened outside the fence — run flow 7 and read the log. That is a guess, and the underlying question is §10.11's: <span class=\"id\">AT_FACILITY</span> covers both the gate lane and the outside lot, and those two want different answers here. Decide whether dwell starts at the perimeter or at the fence, because it changes what every yard-occupancy number means.",
- refs:"model §10.12 · model §10.11 · model §3.6.2 · flows §9 · stress test 1-xv"}
+ refs:"model §10.12 · model §10.11 · model §3.6.2 · flows §9 · stress test 1-xv"},
+{id:"F14", sev:"blocks", title:"An appointment the driver attends twice cannot be walked at all",
+ body:"<b>Reported from operations, not found by the bench.</b> What the documents called a \u201cpreload pickup\u201d is two different patterns. An <b>outbound pickup</b> collects a trailer that a different appointment loaded \u2014 one visit. An <b>outbound preload</b> is one appointment the driver attends <i>twice</i>: he brings an empty trailer, leaves, and returns for it loaded. Only the first was modelled, and §4 claimed full coverage.<br><br>Its legs are <i>identical</i> to an outbound live load \u2014 BRING T1 empty, TAKE T1 loaded \u2014 so the old table could express it while the machinery could not run it. Three things broke, and the first is fatal: <b>AUTHORIZE_DEPARTURE compared the TAKE leg's expected freight against a trailer standing in the yard empty, so visit 1 could never be authorized to depart.</b> <span class=\"id\">presence</span> is also one value ending terminally at DEPARTED with one on_site_since, and the dockpass is single-use \u2014 so visit 2 had no credential.<br><br>Fixed by scoping departure to the trailer the driver actually has, which <b>custody already knows</b> (§10.12): hooked means taking it, dropped means leaving bobtail and that leg is a later visit's business. No new bookkeeping. Walk \u201cOutbound preload\u201d and read the log at visit 1's check-out.",
+ refs:"model §4 patterns 4 and 4a · model §10.13 · model §5.1 · model §2.4 · model §2.5 · glossary §2 · flows §6a"}
 ];
 const SEV = {
   blocks:{l:"Blocks a flow", t:"r"}, contradiction:{l:"Documents disagree", t:"r"},
@@ -3266,7 +3417,8 @@ const APPLIED = {
   F9:"matrix v0.11 §1.1",
   F10:"model v0.21 §5.2 · matrix v0.11 §4 · flows v0.5 P3",
   F11:"half — VERIFY_EMPTY reworded in model v0.21 §5.1; the real decision is now open item §10.10 for you",
-  F12:"model v0.21 §3.5 and §6.1 · glossary v0.5 §5.1 — but the stored boolean is a stopgap; the end state is the custody model now written up at §10.12"
+  F12:"model v0.21 §3.5 and §6.1 · glossary v0.5 §5.1 — but the stored boolean is a stopgap; the end state is the custody model now written up at §10.12",
+  F14:"model v0.22 §4, §5.1, §2.4, §2.5 · matrix v0.12 §2.6 · flows v0.6 §6a · glossary v0.6 §2 — the pattern is now separated and walkable; §10.13 holds what is left to decide"
 };
 SEEDED.forEach(f => { if (APPLIED[f.id]) f.fixed = APPLIED[f.id]; });
 
@@ -3318,7 +3470,7 @@ function renderRail(){
   'identifier. Sans is always a displayed label. Glossary §1.1 insists they stay '+
   'different things.</p>'+
   '<p>The bench and the documents now agree: the two actions it once had to '+
-  'invent are in the catalog, and the findings rail says which of its twelve '+
+  'invent are in the catalog, and the findings rail says which of its fourteen '+
   'findings have been applied and which are still open.</p></div>';
 }
 
@@ -3609,7 +3761,9 @@ const BRACKETS = [
   {k:"stay", n:"Trailer stay", key:"stay_id",      cls:"stay",
    d:"Gate-in to gate-out. One trailer may have several over its life, and one stay may cover several appointments."},
   {k:"appt", n:"Appointment",  key:"appt_id",      cls:"appt",
-   d:"A driver visit, scheduled window to DEPARTED. A drop-and-hook appointment touches two trailers, so it spans two stays."},
+   d:"The booking. Not the same as one visit: an outbound preload is one appointment the driver attends twice (§10.13)."},
+  {k:"visit", n:"Visit",       key:"visit_id",     cls:"visit",
+   d:"One physical arrival to departure. Its own registration, its own dockpass, its own detention clock. The only bracket that nests cleanly — inside its appointment."},
   {k:"dock", n:"Dock stay",    key:"dock_stay_id", cls:"dock",
    d:"Spot-in to pull-out, containing one or more sessions. Several can occur within one trailer stay."},
   {k:"cust", n:"Custody",      key:"custody_id",   cls:"cust",
@@ -3622,8 +3776,17 @@ function allSpans(w){
     stay: w.stays.map(s => ({id:s.id, cls:"stay", a:s.opened_at, b:s.closed_at,
       label:T(s.trailer_id), meta:(s.legs.length ? s.legs.join(" · ") : "no leg yet")})),
     appt: Object.values(w.visits).map(v => ({id:v.id, cls:"appt",
-      a:(v.arrived_at!=null ? v.arrived_at : v.window[0]), b:v.departed_at,
-      label:v.driver, meta:v.visit_type+" · "+v.legs.length+" leg"+(v.legs.length===1?"":"s")})),
+      a:(v.first_arrived_at!=null ? v.first_arrived_at : v.window[0]),
+      b:(v.closed_at!=null ? v.closed_at : null),
+      label:v.driver, meta:v.visit_type+" · "+v.legs.length+" leg"+(v.legs.length===1?"":"s")+
+        (v.expected_visits>1 ? " · "+v.expected_visits+" visits" : "")})),
+    visit: [].concat.apply([], Object.values(w.visits).map(v =>
+      v.visit_log.map(x => ({id:v.id+"#"+x.n, cls:"visit", a:x.arrived_at, b:x.departed_at,
+        label:v.id+" visit "+x.n,
+        meta:(x.took ? "left with "+x.took : "left bobtail")}))
+      .concat(v.arrived_at!=null && v.departed_at==null
+        ? [{id:v.id+"#"+v.visit_n, cls:"visit", a:v.arrived_at, b:null,
+            label:v.id+" visit "+v.visit_n, meta:"in progress"}] : []))),
     dock: w.dockStays.map(d => ({id:d.id, cls:"dock", a:d.spotted_at, b:d.pulled_at,
       label:"Dock "+d.dock+" · "+T(d.trailer_id), meta:"1..n sessions"})),
     cust: w.custody.map(c => ({id:c.id, cls:"cust"+(c.holder_type==="YARD_TRUCK"?" yard":""),
@@ -3662,6 +3825,11 @@ function nestingFacts(w){
       d.spotted_at>=s.opened_at && (s.closed_at==null || d.spotted_at<=s.closed_at));
     if (ds.length>1) out.push("Trailer stay <b>"+s.id+"</b> contains <b>"+ds.length+
       "</b> dock stays.");
+  });
+  Object.values(w.visits).forEach(v => {
+    const n = v.visit_log.length + (v.arrived_at!=null && v.departed_at==null ? 1 : 0);
+    if (n > 1) out.push("Appointment <b>"+v.id+"</b> was attended <b>"+n+
+      "</b> times — so an appointment is not one visit, which is what §2.4 asserts.");
   });
   const orphanMoves = w.events.filter(e => !e.appt_id && e.stay_id).length;
   if (orphanMoves) out.push("<b>"+orphanMoves+"</b> event"+(orphanMoves===1?"":"s")+
@@ -3876,8 +4044,13 @@ function commit(id, vals){
   }
   ACTOR = a.actor && a.actor!=="—" ? a.actor
     : (ROLES.find(r => r.id===W.role)||{}).label || "system";
+  SPAN_APPT = c.v && !c.v.closed_at && !c.v.turned_away ? c.v.id : null;
+  SPAN_VISIT = c.v && c.v.arrived_at!=null && c.v.departed_at==null
+    ? c.v.id+"#"+c.v.visit_n : null;
+  SPAN_SET = true;
   a.apply(W, c, vals||{});
   syncStays(W);
+  SPAN_SET = false; SPAN_APPT = null; SPAN_VISIT = null;
   ACTOR = "system";
   W.clock += 3;
   afterAction(id);

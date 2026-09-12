@@ -1,7 +1,18 @@
 # Yard, Dock & Appointment Operations — Domain Model and UI Specification
 
-**Status:** Draft v0.21 — `POSITION_TRAILER`; `tractor` stored; gate preconditions corrected
+**Status:** Draft v0.22 — outbound preload; departure scoped to the driver's own trailer
 **Purpose:** Define the entities, independent state dimensions, actions, derived work queues, and trailer-card display rules needed to manage trailers, shipments, and appointments at a distribution facility.
+
+### Changes from v0.21
+
+**Reported from operations, not found by the engine:** what the document set called a "preload pickup" is two different patterns, and only one of them was modelled.
+
+- **Pattern 4 renamed to "outbound pickup", and pattern 4a added — the outbound preload** (§4). One appointment the driver attends twice: he brings an empty trailer, leaves, and returns for it loaded. Its legs are identical to pattern 2's, so the old table could express it and the machinery could not run it — `AUTHORIZE_DEPARTURE` blocked the first departure outright. One name, "preload pickup", had been covering both patterns, which is how the distinction went missing.
+- **`AUTHORIZE_DEPARTURE` and `CHECK_OUT` are scoped to the trailer the driver actually has** (§5.1), which custody already knows — not to every leg of the appointment.
+- **The per-visit fields in §2.4 are marked as such**, and the dockpass is one per visit rather than one per appointment (§2.5).
+- **§10.13 added** — an appointment is not one visit. The outbound preload needs two presence lifecycles, two dockpasses and two detention spans on one booking, and §2.4's "an appointment is a visit" left nowhere to put them. §10.12's custody span is what makes the fix cheap, so **decide §10.12 and §10.13 together.**
+- **Four stress tests added** (22a–22d), including the two patterns side by side, since the risk now is a screen or a metric treating them as one thing.
+- **§2.4 no longer says an appointment *is* a visit.** It is a booking that may be attended more than once.
 
 ### Changes from v0.20
 
@@ -271,7 +282,9 @@ The uniqueness constraint on `shipment_id` is the single most important line in 
 Rows are **removed** only by completing an unload. They are never deleted to "free up" a trailer — see §9.1.
 
 ### 2.4 Appointment (a driver visit)
-**An appointment is a visit by a tractor and driver — not by a trailer.** It contains legs.
+**An appointment is a booking by a tractor and driver — not by a trailer.** It contains legs, and it may be attended more than once: an outbound preload (§4 pattern 4a) is one appointment the driver attends twice, bringing an empty trailer and returning for it loaded. The fields below marked *per visit* therefore belong to a visit span rather than to the appointment, and §10.13 is the unresolved shape of that.
+
+*v0.21 and earlier said "an appointment is a visit", which made this a distinction without a place to put it.*
 
 | Field | Notes |
 |---|---|
@@ -283,11 +296,12 @@ Rows are **removed** only by completing an unload. They are never deleted to "fr
 | `access_method` | `DOCKPASS` \| `RF_BADGE` \| `GUARD` (§9 #34) |
 | `visit_state` | Dimension 6 (§3.6) |
 | `legs` | 1 or 2 VisitLegs |
-| `self_registered_at` | QR scan at the facility sign. **Proves physical presence**, so it is the strongest arrival evidence available (§10.6) |
-| `arrived_at` | Earliest evidence of presence — the QR scan where there is one, otherwise recorded at the gate. Largely redundant for self-registering drivers (§9 #31) |
-| `admitted_at` | Gate opened, trailer on site |
-| `dockpass` | See below. Issued at self-registration, consumed at the gate |
-| `on_site_since` | Set at check-in. **The detention clock by default** (§9 #3) |
+| `expected_visits` | How many times the driver is expected to attend. 1 for everything except an outbound preload (§4 pattern 4a) |
+| `self_registered_at` | ***Per visit.*** QR scan at the facility sign. **Proves physical presence**, so it is the strongest arrival evidence available (§10.6) |
+| `arrived_at` | ***Per visit.*** Earliest evidence of presence — the QR scan where there is one, otherwise recorded at the gate. Largely redundant for self-registering drivers (§9 #31) |
+| `admitted_at` | ***Per visit.*** Gate opened, trailer on site |
+| `dockpass` | ***Per visit.*** See below. Issued at self-registration, consumed at the gate — so a second visit needs a second pass |
+| `on_site_since` | ***Per visit.*** Set at admission. **The detention clock by default** (§9 #3), which means a two-visit appointment has two detention spans, not one |
 
 ### 2.5 VisitLeg
 | Field | Notes |
@@ -319,7 +333,7 @@ This matters for what it is *not* doing. v0.12 treated the pass as the thing aut
 
 Two constraints remain, both already in the field list:
 
-- **Single use.** Consumed at admission, so two drivers cannot enter on one pass.
+- **Single use.** Consumed at admission, so two drivers cannot enter on one pass. **One pass per visit, not per appointment** — an outbound preload issues a second pass when the driver returns (§10.13), and treating the pass as appointment-scoped would either let him re-enter on a spent code or lock him out entirely.
 - **Window-scoped.** Valid for the appointment window plus a tolerance, which keeps the set of live passes small.
 
 **One implementation note rather than a design concern:** five digits is 100,000 combinations, and single-use plus window scoping keeps the live keyspace tiny at any moment — but only if the kiosk **rate-limits attempts and locks out after repeated failures.** Without that, someone standing at the kiosk can enumerate against the small set of active passes. This is a kiosk requirement, not a reason to lengthen the code.
@@ -923,10 +937,11 @@ Every routing case you described, expressed as legs. No case needs a special cod
 | 1 | **Inbound live load** | `LIVE` | T1, freight, inbound SHP (trailer bound at gate) | T1, `EMPTY` | Same trailer |
 | 2 | **Outbound live load** | `LIVE` | T1, `EMPTY` | T1, freight, 1..n outbound SHP | Same trailer |
 | 3 | **Inbound drop** | `DROP` | T1, freight, 1..n inbound SHP | — | Leaves bobtail |
-| 4 | **Outbound drop / preload pickup** | `DROP` | — | T1, freight, `STAGED`, `COMPLETE` | Arrives bobtail |
+| 4 | **Outbound pickup** — takes a trailer loaded under a *different* appointment | `DROP` | — | T1, freight, `STAGED`, `COMPLETE` | Arrives bobtail. **One visit** |
+| 4a | **Outbound preload** — brings an empty trailer, leaves, returns for it loaded | `DROP` | T1, `EMPTY` | T1, freight | Same trailer. **One appointment, two visits** (§10.13) |
 | 5 | **Arrive empty, leave preloaded** | `DROP` | T1, `EMPTY` | T2, freight, `STAGED` | **Two trailers** |
 | 6 | **Arrive loaded, leave empty** | `DROP` | T1, freight, inbound SHP | T2, `EMPTY` | **Two trailers** |
-| 7 | Same as 5/6 but one trailer across two visits | `DROP` | T1 only | (later appointment) T1 only | Same trailer, two appointments |
+| 7 | Same as 5/6 but split across **two separate appointments** | `DROP` | T1 only | (a later, independent appointment) T1 only | Same trailer, two appointments — contrast 4a, which is two visits of *one* |
 | 8 | **Company driver takes a preload for a route** *(optional — §1.2)* | `DROP`, `party_type = COMPANY_DRIVER` | — | T1, loaded, `STAGED` | Arrives on foot or by shuttle. RF badge egress (§9 #34) |
 | 9 | **Company trailer returns from route** *(optional — §1.2)* | *No appointment at all* | — | — | `UnappointedReturn` (§2.13) → `NOT_READY` (§3.7) |
 
@@ -942,9 +957,15 @@ Note the asymmetry: the outbound leg is an appointment (pattern 8), the inbound 
 
 **Patterns 8 and 9 are available, not assumed** (§9 #35). A customer with no company fleet never triggers them and needs no configuration to avoid them — they are workflows nobody starts, which is the cheapest kind of optionality (§1.2). Patterns 1 through 7 cover every third-party operation on their own.
 
-Patterns 5 and 6 are drop-and-hook swaps. Patterns 1 and 2 are the only ones where the same trailer appears on both legs, and `visit_type = LIVE` is what tells the system the driver's clock is running and the dock work is on the critical path.
+Patterns 5 and 6 are drop-and-hook swaps. Patterns 1, 2 and 4a are the ones where the same trailer appears on both legs, and `visit_type = LIVE` is what tells the system the driver's clock is running and the dock work is on the critical path.
 
 Patterns 5/6 and pattern 7 are *both* supported — only possible because trailer identity lives on the leg rather than the appointment.
+
+**Pattern 4a is the one this table could not previously express, and it is worth being precise about why** (§10.13). Its leg structure is *identical* to pattern 2 — BRING T1 empty, TAKE T1 loaded — and the only difference is that the driver crosses the gate twice instead of waiting through the dock work. That difference has nowhere to live: `presence` is a single value ending terminally at `DEPARTED`, the dockpass is single-use, and there is one `on_site_since`. Worse, `AUTHORIZE_DEPARTURE` (§5.1) compares the TAKE leg's expected freight against its trailer, which on visit 1 is standing in the yard empty — so **the first departure could never be authorized at all.** This is not an exotic case; it is how a facility loads a carrier's own trailer without holding the driver for the duration.
+
+**So the coverage claim above needs qualifying.** Every pattern here is expressible as legs, and that still holds — 4a's legs are unremarkable. What 4a shows is that legs are not the whole story: the *number of visits* is an independent fact about an appointment, and expressing patterns as legs alone quietly assumed it was always one. See §10.13.
+
+**Do not call pattern 4 a "preload pickup".** It collects a trailer that a *different* appointment loaded; 4a is the preload. One name covered both, which is how the distinction went missing (glossary §2).
 
 ---
 
@@ -963,8 +984,8 @@ Each action lists preconditions and effects. This table is the contract: the UI 
 | `REGISTER_AND_ADMIT` | Kiosk or guard, no prior self-registration | The single-step path: sets registration, presence, and optionally destination in one transaction. **No separate logic** — it writes the same dimensions (§3.6.4) |
 | `HOLD_OUTSIDE` | `presence = AT_GATE`; no dock assigned | Visit held outside the fence. Stays `AT_GATE`, remains in the dock-assignment queue. **Does not start the detention clock** where detention runs from admission (§10.6) |
 | `VERIFY_EMPTY` | **Nothing aboard** — no `ON_BOARD` or `PART_LOADED` rows. *Not* load state `EMPTY`: an outbound live load is `ASSIGNED_ONLY` from the moment its TAKE leg is bound, so the stricter reading would make this action unavailable on the one flow that needs it | `empty_verification → VERIFIED_EMPTY`. Optional at gate or any time after (§9 #6) |
-| `AUTHORIZE_DEPARTURE` | Every leg has a trailer; TAKE trailer's aboard freight matches `expected_shipment_ids` **plus `expected_residual_shipment_ids`** (§2.5); if carrying *outbound* freight, `fill_declaration = COMPLETE` and sealed; no open MoveTask or DockSession on TAKE trailer. **`party_type = COMPANY_DRIVER` relaxes the seal and authorization ceremony but not the trailer-to-load match** (§9 #34) | Visit → `AUTHORIZED_TO_DEPART` |
-| `CHECK_OUT` | Visit `AUTHORIZED_TO_DEPART`. **No camera dependency** — reads are too slow to gate the lane (§9 #28) | `presence → DEPARTED`; TAKE trailer → `OFF_SITE`, tractor cleared; outbound shipments → `DEPARTED`. Detention stops at the exit image *capture* time once the read lands, otherwise at the clerk's action (§3.6) |
+| `AUTHORIZE_DEPARTURE` | Every leg has a trailer. **The freight checks apply only to the trailer this visit is actually leaving with** — the TAKE-leg trailer the driver currently has hooked (§3.5). A driver who dropped what he brought and hooked nothing leaves bobtail, and a TAKE leg he has not hooked is a later visit's business (§10.13). For that departing trailer: aboard freight matches `expected_shipment_ids` **plus `expected_residual_shipment_ids`** (§2.5); if carrying *outbound* freight, `fill_declaration = COMPLETE` and sealed; no open MoveTask or DockSession on TAKE trailer. **`party_type = COMPANY_DRIVER` relaxes the seal and authorization ceremony but not the trailer-to-load match** (§9 #34) | Visit → `AUTHORIZED_TO_DEPART` |
+| `CHECK_OUT` | Visit `AUTHORIZED_TO_DEPART`. **No camera dependency** — reads are too slow to gate the lane (§9 #28) | `presence → DEPARTED` **for this visit**; the trailer the driver has hooked → `OFF_SITE`, custody closed — *not* simply "the TAKE-leg trailer", which on visit 1 of a preload is staying (§10.13); outbound shipments → `DEPARTED`. Detention stops at the exit image *capture* time once the read lands, otherwise at the clerk's action (§3.6) |
 | `DECLARE_TAKE_LEG_CHANGE` | Visit `ON_SITE` or later, before `CHECK_OUT`; substitute trailer on site and not on another open leg; supervisor confirmation if the substitute carries freight (§5.1) | TAKE leg's `trailer_id` amended, or cleared for a bobtail departure. Original trailer stays on site with its shipments intact. Logged against both trailers |
 | `RESOLVE_IDENTIFICATION` | An identification pair in `MISMATCH`, or an `UNMATCHED` read; role permitted by facility config | Records which source was correct and who decided. May trigger `CORRECT_TRAILER_IDENTITY` or `MERGE_TRAILERS` (§5.5) if the wrong record was already used |
 | `TURN_AWAY` | `presence` is `AT_FACILITY`, `AT_GATE` or `ON_SITE` — anything but `OFF_SITE` and `DEPARTED` | Visit → `TURNED_AWAY`; reason code required; any held dock released |
@@ -1615,6 +1636,46 @@ Take it, in this order, and only the first part is urgent:
 
 The cost is honest: two entities, three moved fields, and §8 rewritten. The cost of not doing it is that every custody question becomes archaeology against the event log, and the one clock is asked to answer two different commercial questions.
 
+### 10.13 An appointment is not one visit
+
+**The outbound preload** (§4 pattern 4a): the driver brings an empty trailer, drops it, leaves, and comes back later for the same trailer loaded. One appointment, two visits, one trailer on both legs.
+
+§2.4 said an appointment *is* a driver visit, which made this unrepresentable rather than merely undocumented. Three things break, and the first is a hard block:
+
+| What | Why it breaks |
+|---|---|
+| **`AUTHORIZE_DEPARTURE`** | It compared the TAKE leg's expected freight against that leg's trailer. On visit 1 the TAKE leg names a trailer standing in the yard empty, so the freight never matches and **the first departure can never be authorized.** |
+| **`presence`** | One value per appointment, ending terminally at `DEPARTED`, with one `arrived_at` / `admitted_at` / `on_site_since` / `departed_at`. Visit 2 has nowhere to live, and the appointment's own detention becomes two spans rather than one. |
+| **Dockpass** | Single use, consumed on visit 1. Visit 2 arrives with no credential. |
+
+#### The shape
+
+Same as §10.12's: a span entity, with the per-visit facts moved on to it.
+
+| Entity | Holds | Bounded by |
+|---|---|---|
+| **Appointment** | The booking: window, carrier, driver, tractor, `visit_type`, `party_type`, legs, `expected_visits` | Booked to last visit departed |
+| **Visit** | `registration`, `presence`, `dockpass`, `arrived_at`, `admitted_at`, `on_site_since`, `departed_at`, and the legs this visit executed | One arrival to one departure |
+
+`VisitLeg` becomes better named, not worse: a leg genuinely belongs to a visit now. The at-most-one-BRING-and-one-TAKE rule stays at the **appointment** level.
+
+#### What decides which leg a visit executed — and it needs no bookkeeping
+
+**Custody already answers it** (§10.12). If the driver is hooked to the TAKE leg's trailer when he reaches the gate, he is taking it. If he dropped it, he leaves bobtail and that leg is outstanding. So the authorization scope is derived from a physical fact rather than from a field somebody has to remember to set — which is the same reasoning that made `TRACTOR_ATTACHED` derivable.
+
+This is why §10.12 and this item should be decided together: custody is what makes this one cheap.
+
+#### Consequences worth deciding
+
+1. **Detention becomes per visit.** Two short waits, not one long one, and a carrier billing per appointment and a facility measuring per visit will disagree. Pick one and say which.
+2. **The window.** One `window_start`/`window_end` for an appointment the driver attends twice, hours apart, describes neither visit. Visit 2 probably needs its own.
+3. **`PICKUP_NOT_TAKEN`** must not fire when a driver leaves without the TAKE trailer *by design*. `expected_visits` is what distinguishes a planned return from a failed pickup.
+4. **A fifth bracketing** for §10.12's history: Appointment ⊃ Visit. It is the only pair in that set which nests cleanly, and it is worth showing precisely because none of the others do.
+
+#### Recommendation
+
+Take it, and take it with §10.12. The pieces are the same shape, the custody span does most of the work, and `expected_visits` plus a visit span is a small addition next to what it unblocks. The alternative — modelling the preload as two separate appointments (pattern 7) — is what a facility would be forced to do today, and it loses the fact that one booking and one carrier commitment covers both halves.
+
 ---
 
 ## 11. Stress tests
@@ -1703,6 +1764,10 @@ Run these against the model before writing code. If any cannot be expressed, the
 20. A shipment is assigned, unassigned before loading, then assigned to a different trailer.
 21. A trailer is marked out of service while a session is active. *(§5.5)*
 22. An appointment no-shows for a `STAGED`, sealed preload. *(§9.1)*
+22a. **new** — **An outbound preload.** Driver brings an empty trailer, drops it, and departs; the facility loads and seals it; the same driver returns on the **same appointment** and takes it. Visit 1 must be authorizable to depart even though the TAKE leg names a trailer that is staying. Two visits, two dockpasses, two detention spans, one trailer stay. *(§4 pattern 4a, §10.13)*
+22b. **new** — Same appointment, but on the return visit the driver takes a **different** trailer. Must be a declared substitution on the TAKE leg, not a second failed pickup. *(§5.1, §10.13)*
+22c. **new** — Same appointment, but the driver never comes back. The loaded trailer stages and ages; `PICKUP_NOT_TAKEN` must fire on the *appointment*, not on visit 1's departure. *(§10.13)*
+22d. **new** — An **outbound pickup** (pattern 4) and an **outbound preload** (pattern 4a) side by side. One visit versus two, another appointment's trailer versus the driver's own. No screen, report, or metric may treat them as the same thing. *(§4)*
 23. A trailer is assigned a shipment on a driver's empty claim and turns out not to be empty. *(§9 #6)*
 24. Load state computes to `IN_WORK` with no active session. Alarm, not silent display. *(`INTEGRITY_ALARM`)*
 

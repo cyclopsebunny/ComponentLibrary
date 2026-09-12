@@ -9,6 +9,7 @@ Four documents, one subject, deliberately different cuts. Each answers a differe
 | Question | Document |
 |---|---|
 | "Walk me through an inbound live load, step by step" | **flows.md** |
+| "What is the difference between an outbound pickup and an outbound preload?" | **flows.md** §6, §6a |
 | "What can a user do to *this* trailer right now?" | **action-availability-matrix.md** |
 | "What does `PART_LOADED` mean? What do we call this?" | **glossary.md** |
 | "Why is it built this way? What did we decide and why?" | **yard-dock-operations-model.md** |
@@ -16,7 +17,7 @@ Four documents, one subject, deliberately different cuts. Each answers a differe
 ### The four
 
 **`flows.md` — Operational Flows**
-Process view. Seven appointment types walked start to finish, with the states, flags, actions, and actor at each step. Built on one shared six-phase spine so the flows cannot drift from each other.
+Process view. Eight appointment patterns walked start to finish, with the states, flags, actions, and actor at each step. Built on one shared six-phase spine so the flows cannot drift from each other.
 *Read this first if you are new.*
 
 **`action-availability-matrix.md` — Action Availability**
@@ -28,7 +29,7 @@ Reference. Every entity, state, action, flag, config key, and label. Includes te
 *The tiebreaker. When documents disagree, correct this one first.*
 
 **`yard-dock-operations-model.md` — Domain Model**
-Structural view and decision record. Entities, the six state dimensions, the action catalog with preconditions, the queues, 38 resolved decisions with their consequences, 12 open items, and ~95 stress tests.
+Structural view and decision record. Entities, the six state dimensions, the action catalog with preconditions, the queues, 38 resolved decisions with their consequences, 13 open items, and ~99 stress tests.
 *Read §9 (decisions) and §10 (open items) before changing anything.*
 
 ---
@@ -63,12 +64,15 @@ Five things that, if lost, make the rest incoherent:
 
 | Document | Version | Size |
 |---|---|---|
-| yard-dock-operations-model.md | v0.21 | ~152 KB |
-| flows.md | v0.5 | ~19 KB |
-| action-availability-matrix.md | v0.11 | ~28 KB |
-| glossary.md | v0.5 | ~18 KB |
+| yard-dock-operations-model.md | v0.22 | ~157 KB |
+| flows.md | v0.6 | ~24 KB |
+| action-availability-matrix.md | v0.12 | ~29 KB |
+| glossary.md | v0.6 | ~19 KB |
 
-**38 decisions resolved. 12 items open** (model §10). The model is decided enough to build.
+**38 decisions resolved. 13 items open** (model §10). The model is decided enough to build.
+
+**§10.12 and §10.13 should be decided together** — custody spans are what make the two-visit
+appointment cheap to support, and both are entity shape rather than behaviour.
 
 ### The bench
 
@@ -76,21 +80,25 @@ Five things that, if lost, make the rest incoherent:
 six trailer dimensions, the derived flags, and the action catalog's preconditions implemented
 once, with the seven flows and the sharper stress tests walked through them step by step.
 
-It exists because prose cannot be run. Every change in the v0.21 / v0.11 / v0.5 round was
-found by building it and hitting a wall: an action with no state in which it was available, an
-effect naming a value no dimension has, a flow step with no action behind it. The four
-documents are still the specification; the bench is the thing that says when they disagree.
-Run the flows there after changing anything here.
+It exists because prose cannot be run. Almost every change in the v0.21–v0.22 rounds was found
+by building it and hitting a wall: an action with no state in which it was available, an effect
+naming a value no dimension has, a flow step with no action behind it, a departure that could
+never be authorized. The four documents are still the specification; the bench is the thing that
+says when they disagree. Run the flows there after changing anything here.
+
+The exception is the outbound preload (§4 pattern 4a), which came from operations rather than
+from the engine — a reminder that the bench can only catch what the documents contradict, never
+what they simply do not know about.
 
 ### Known maintenance risks
 
-- **The model document is too large.** At ~152 KB it is past the size where a sequential edit can silently delete a section — this has already happened once. It should be split into domain model, decision log, and UI spec. The v0.21 round was edited by targeted replacement only, and §10 has grown since.
+- **The model document is too large.** At ~157 KB it is past the size where a sequential edit can silently delete a section — this has already happened once. It should be split into domain model, decision log, and UI spec. The v0.21 round was edited by targeted replacement only, and §10 has grown since.
 - **Four documents will drift.** Nothing enforces consistency. The glossary is designated the tiebreaker, which only works if it is the document people actually open.
 - ~~`CLEAR_VISIT` naming inconsistency~~ — **resolved in v0.20**: renamed `AUTHORIZE_DEPARTURE`. Three naming items remain open in glossary §11.
 
 ### Before writing code
 
-1. Answer model §10.4 — multi-facility identity scoping — and **§10.12, custody and `TrailerStay`**. These are the two items that are entity shape rather than behaviour, and shape is what you pay for later. §10.12 also decides what the history screens can ever show.
+1. Answer model §10.4 — multi-facility identity scoping — and **§10.12 and §10.13 together**: custody, `TrailerStay`, and the two-visit appointment. These are the items that are entity shape rather than behaviour, and shape is what you pay for later. They also decide what the history screens can ever show.
 2. Build the event log first. Every bracketing in §10.12 is a span over it, so the log has to carry the actor on every entry.
 3. Enforce two constraints in the database, not application code: `TrailerLoad.shipment_id` unique, and single-occupancy on numbered yard spots.
 4. Design the `END_SESSION` reconciliation screen early. It is the most consequential new UI and the easiest to under-build into a confirmation dialog.
