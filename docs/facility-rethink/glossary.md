@@ -1,8 +1,11 @@
 # Glossary — Canonical Terms
 
-**Companion to:** `yard-dock-operations-model.md` v0.25, `action-availability-matrix.md` v0.18
-**Status:** Draft v0.12 — a live load stays with its driver
+**Companion to:** `yard-dock-operations-model.md` v0.26, `action-availability-matrix.md` v0.19
+**Status:** Draft v0.13 — sealing is for a load going out
 **Purpose:** The single source of truth for every entity, state, action, flag, and label. When this document and another disagree, this one is wrong and should be corrected — but until it is, it is what the product, the training material, and support should say.
+
+### Changes from v0.12
+- **`SEAL_TRAILER` and `BREAK_SEAL` entries** (§7): sealing needs an outbound load aboard; breaking a seal needs only a seal. The pair is deliberately asymmetric (model §9 #39).
 
 ### Changes from v0.11
 - **`DROP_TRAILER` and `DECLARE_TAKE_LEG_CHANGE` entries** (§7) say where they do *not* apply. Both were offered to a live load's driver at a dock; a live visit is the driver staying with the trailer, and converting that to a drop is model §10.15's missing action.
@@ -279,8 +282,8 @@ Inbound rows begin at `ON_BOARD` — the freight is already aboard, so there is 
 |---|---|
 | `ASSIGN_SHIPMENT` | **Exception path.** Links an outbound shipment to a trailer **on site**, for preloads and unplanned loads. Appointment-driven work gets its rows from `BIND_TRAILER_TO_LEG` |
 | `UNASSIGN_SHIPMENT` | Unlinks it. Only while `ASSIGNED` — never once loading has begun |
-| `SEAL_TRAILER` | Records a seal. Trailer must be **on site** — it is a physical act. Requires fill complete **where an outbound load is aboard**, and no part-loaded rows; a trailer leaving with inbound residual freight has no load to declare |
-| `BREAK_SEAL` | Clears it, with a reason |
+| `SEAL_TRAILER` | Records a seal. **For a load going out**: needs an outbound row already `ON_BOARD`, so not before the trailer is loaded and not once it has been unloaded or was always empty. Trailer must be **on site** — it is a physical act. Requires fill complete and no part-loaded rows (model §9 #39) |
+| `BREAK_SEAL` | Clears it, with a reason. **Needs only a seal** — not an outbound load, unlike `SEAL_TRAILER`. An inbound trailer arrives sealed and breaking it is the first thing receiving does, so the pair is asymmetric on purpose |
 
 ### 6.6 Trailer
 

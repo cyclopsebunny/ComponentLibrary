@@ -461,7 +461,7 @@ dialog footer{padding:11px 15px; border-top:1px solid var(--line); display:flex;
 <header class="top">
   <span class="brand">
     <b>Yard Flow Bench</b>
-    <span>Walks the yard &amp; dock document set against itself — model v0.25 · flows v0.10 · matrix v0.18 · glossary v0.12</span>
+    <span>Walks the yard &amp; dock document set against itself — model v0.26 · flows v0.10 · matrix v0.19 · glossary v0.13</span>
   </span>
   <span class="topctl">
     <button class="mini" id="cfgbtn" type="button">Facility config</button>
@@ -2391,16 +2391,27 @@ SEAL_TRAILER:{
        scoped, this was the next control offered on a loaded inbound trailer
        still outside the fence. Finding F21. */
     if (!onSite(t)) return [H(CLS.PHYSICAL,"Trailer is not on site")];
-    if (!rowsOf(w,t.id).some(r => r.link_state==="ON_BOARD"))
-      return [H(CLS.DATA,"No freight aboard — not a sealing candidate")];
+    /* Reported: sealing is for an outbound load and nothing else. You would
+       not seal a trailer before it is loaded, and there is no reason to seal
+       one that has been unloaded or was always empty — while breaking a seal
+       stays available, because an inbound trailer arrives sealed and that is
+       the whole point.
+
+       "≥1 ON_BOARD row" (model §5.4) satisfied all three of those: an inbound
+       trailer's rows begin ON_BOARD (glossary §5.2), so the action was offered
+       on the apron before the trailer had been unloaded, and matrix §2.3 keyed
+       it on "freight aboard" without asking whose freight. Same test as the
+       fill declaration now uses — outbound rows only reach ON_BOARD at
+       END_SESSION, so "not before it is loaded" comes for free. Finding F24;
+       it was F21's one open residue and the answer came from operations. */
+    if (!rowsOf(w,t.id).some(r => r.direction==="OUTBOUND" && r.link_state==="ON_BOARD"))
+      return [H(CLS.DATA,"No outbound load aboard — sealing is for a load going out, and "+
+        "there is nothing to seal before it is loaded")];
     const f = svc(w,t);
-    /* Scoped to outbound freight, as AUTHORIZE_DEPARTURE and READY_TO_DEPART
-       both already were. A trailer leaving with inbound freight it arrived
-       with is a real sealing candidate and has no load for anyone to declare
-       complete — so asking for the declaration here is a dead end now that
-       the declaration is itself scoped. Finding F21. */
-    if (rowsOf(w,t.id).some(r => r.direction==="OUTBOUND" && r.link_state==="ON_BOARD") &&
-        t.fill!=="COMPLETE")
+    /* Unconditional again: with sealing scoped to an outbound load, there is
+       always a load for someone to declare complete, so this can no longer
+       breadcrumb to an action that is unavailable (the F21 dead end). */
+    if (t.fill!=="COMPLETE")
       f.push(D(CLS.DATA, escalate(w,c,"DECLARE_FILL_COMPLETE",WHY.FILL_OPEN)));
     if (rowsOf(w,t.id).some(r => r.link_state==="PART_LOADED")) f.push(D(CLS.DATA, WHY.PART_LOADED));
     const s = openSession(w,t.id);
@@ -3791,7 +3802,7 @@ const SEEDED = [
  refs:"matrix §1.8 · matrix §3.4 · glossary §4.1 · flows §12 item 3 · model §2.11 · model §5"},
 
 {id:"F21", sev:"blocks", title:"An inbound trailer satisfies every precondition for declaring its load complete",
- body:"<b>Reported: on an inbound live load the dock lead could declare the load complete as soon as the driver had registered</b> — before the visit was admitted, let alone docked.<br><br>The precondition model §5.3 states is <b>“≥1 <span class=\"id\">ON_BOARD</span> row”</b>, and an inbound trailer's rows <i>begin</i> at <span class=\"id\">ON_BOARD</span>, because the freight is already aboard when it arrives — glossary §5.2 says so in as many words. So the condition was true of every loaded inbound trailer in the world, including one standing outside the fence having done nothing but scan the QR sign.<br><br><b>The declaration is about an outbound load, and nothing said so.</b> Three documents describe it as a statement about the trailer: “no more freight is going on” (glossary §7), “the system cannot infer fullness” (model §3.2), “freight aboard” as the availability condition (matrix §2.3, §2.5). Its only consumers are sealing and departure, and <i>two of the three already scoped themselves to outbound freight aboard</i> — <span class=\"id\">AUTHORIZE_DEPARTURE</span> and <span class=\"id\">READY_TO_DEPART</span> both test direction. The producer never did. Requiring an outbound <span class=\"id\">ON_BOARD</span> row also gives the reported rule for nothing, since outbound rows reach <span class=\"id\">ON_BOARD</span> only at <span class=\"id\">END_SESSION</span>.<br><br><b>Then the next control along was wrong too.</b> With the declaration scoped, <span class=\"id\">SEAL_TRAILER</span> became available on the same off-site trailer — it had only ever been blocked by the fill requirement, and it has no position precondition at all. Which is the general defect: <b>matrix §2 is keyed by position, so an action's absence from a position's table is the only place “not available there” is ever said</b>, and model §5 carries a position precondition on one action out of forty. Anything built from the catalog alone offers dock actions on trailers that are not here. §5 now says every action needs its position written in.<br><br>Two smaller consequences. Sealing's fill requirement is now scoped to outbound as well, or a trailer leaving with inbound residual freight — the LTL partial receipt, which is a legitimate outcome — asks for a declaration that is correctly unavailable: a new dead end of the kind F18 was about. And matrix §2.5's <span class=\"id\">No session</span> column for both actions turns out to mean the multi-session case only.<br><br>Left open: matrix §2.3 lists sealing as available with any freight aboard, so it is still offered on an inbound trailer on the apron. Pointless rather than wrong, and tightening it is an operational call rather than an editorial one.",
+ body:"<b>Reported: on an inbound live load the dock lead could declare the load complete as soon as the driver had registered</b> — before the visit was admitted, let alone docked.<br><br>The precondition model §5.3 states is <b>“≥1 <span class=\"id\">ON_BOARD</span> row”</b>, and an inbound trailer's rows <i>begin</i> at <span class=\"id\">ON_BOARD</span>, because the freight is already aboard when it arrives — glossary §5.2 says so in as many words. So the condition was true of every loaded inbound trailer in the world, including one standing outside the fence having done nothing but scan the QR sign.<br><br><b>The declaration is about an outbound load, and nothing said so.</b> Three documents describe it as a statement about the trailer: “no more freight is going on” (glossary §7), “the system cannot infer fullness” (model §3.2), “freight aboard” as the availability condition (matrix §2.3, §2.5). Its only consumers are sealing and departure, and <i>two of the three already scoped themselves to outbound freight aboard</i> — <span class=\"id\">AUTHORIZE_DEPARTURE</span> and <span class=\"id\">READY_TO_DEPART</span> both test direction. The producer never did. Requiring an outbound <span class=\"id\">ON_BOARD</span> row also gives the reported rule for nothing, since outbound rows reach <span class=\"id\">ON_BOARD</span> only at <span class=\"id\">END_SESSION</span>.<br><br><b>Then the next control along was wrong too.</b> With the declaration scoped, <span class=\"id\">SEAL_TRAILER</span> became available on the same off-site trailer — it had only ever been blocked by the fill requirement, and it has no position precondition at all. Which is the general defect: <b>matrix §2 is keyed by position, so an action's absence from a position's table is the only place “not available there” is ever said</b>, and model §5 carries a position precondition on one action out of forty. Anything built from the catalog alone offers dock actions on trailers that are not here. §5 now says every action needs its position written in.<br><br>Two smaller consequences. Sealing's fill requirement is now scoped to outbound as well, or a trailer leaving with inbound residual freight — the LTL partial receipt, which is a legitimate outcome — asks for a declaration that is correctly unavailable: a new dead end of the kind F18 was about. And matrix §2.5's <span class=\"id\">No session</span> column for both actions turns out to mean the multi-session case only.<br><br><s>Left open: matrix §2.3 lists sealing as available with any freight aboard, so it is still offered on an inbound trailer on the apron.</s> <b>Answered from operations — see F24.</b> Sealing now needs an outbound load aboard, which also makes this action's fill requirement unconditional again.",
  refs:"model §5.3 · model §5.4 · model §3.2 · model §5 note · matrix §2.1 · matrix §2.3 · matrix §2.5 · glossary §5.1 · glossary §5.2 · glossary §7"},
 
 {id:"F22", sev:"blocks", title:"A live load's driver was offered the handoff, and the right fix leaves an operation with no action",
@@ -3800,7 +3811,11 @@ const SEEDED = [
 
 {id:"F23", sev:"gap", title:"A visit can be about two trailers, and every availability table is keyed on one",
  body:"<b>Found while verifying F22, by fixing drop-and-hook so it could be walked at all.</b> Flow 5 brings one trailer and takes a different one. After the drop, the driver's next action — hook the other trailer — is on a <i>different object</i> from the one every preceding step was about, and a surface scoped to one trailer does not offer it. In the bench the step was simply unreachable: every gate reads the context trailer, and the context was the trailer he had just dropped.<br><br>Nothing in the four documents resolves this. Matrix §2's tables are keyed on <b>a</b> trailer's position; §1.7 derives the primary action <b>per trailer</b>; flows §7 walks two trailers through one visit without saying what the screen is following. The two-trailer visit needs either a <b>visit-scoped</b> surface spanning both legs, or an explicit rule for when a trailer-scoped surface changes subject — and which it is affects what §1.7 can even mean, since “the driver's next step” may not be on the trailer in front of you.<br><br>This is the same shape as model §10.14's two tracks after a handoff, one object further out: there the driver and the trailer diverge in <i>time</i>, here the driver's own steps move between <i>objects</i>. The bench's answer is a per-step focus hint, which is a stage direction and not a rule.",
- refs:"matrix §2 · matrix §1.7 · flows §7 · model §10.14 · model §4"}
+ refs:"matrix §2 · matrix §1.7 · flows §7 · model §10.14 · model §4"},
+
+{id:"F24", sev:"gap", title:"Sealing was keyed on freight aboard without asking whose freight",
+ body:"<b>Reported from operations, and it closes F21's one open residue.</b> A dock worker cannot seal a trailer on an inbound load: you would not seal one before it is loaded, and there is no reason to seal one that has been unloaded or was always empty. They <i>could</i> unseal one.<br><br>The precondition was <b>“≥1 <span class=\"id\">ON_BOARD</span> row”</b> (model §5.4), which satisfied all three of those cases at once, because an inbound trailer's rows begin at <span class=\"id\">ON_BOARD</span> (glossary §5.2). Sealing was offered on the apron, before the trailer had been unloaded, and again afterwards while residual freight stayed aboard. The fix is the same test the fill declaration now uses — <b>an outbound row already <span class=\"id\">ON_BOARD</span></b> — and it covers all three cases in one condition, since outbound rows only reach <span class=\"id\">ON_BOARD</span> at <span class=\"id\">END_SESSION</span>.<br><br><b>The asymmetry with <span class=\"id\">BREAK_SEAL</span> is the point.</b> Breaking a seal needs only a seal: an inbound trailer arrives sealed and breaking it is the first thing receiving does. So the pair is deliberately lopsided, and the documents should say so rather than leave a reader to infer symmetry from the names.<br><br>Two things this tidies. Sealing's fill requirement is <b>unconditional again</b> — F21 had scoped it to outbound only to avoid pointing at a declaration that was unavailable, and with sealing itself scoped there is always a load to declare. And it retires an inconsistency that had been sitting in plain sight: <span class=\"id\">AUTHORIZE_DEPARTURE</span> and <span class=\"id\">READY_TO_DEPART</span> both tested freight <i>direction</i>, and the two actions that produce what they check did not.<br><br><b>This one could not have come from the bench.</b> Nothing contradicted anything — every table agreed with every other that sealing needed freight aboard. Like the outbound preload and the parallel board, it had to come from someone who has watched it happen.",
+ refs:"model §5.4 · model §3.2 · model §9 #39 · matrix §1.1 · matrix §2.3 · matrix §2.5 · matrix §2.6 · glossary §5.2 · glossary §7"}
 ];
 const SEV = {
   blocks:{l:"Blocks a flow", t:"r"}, contradiction:{l:"Documents disagree", t:"r"},
@@ -3832,6 +3847,7 @@ const APPLIED = {
   F20:"matrix v0.16 §1.8 · glossary v0.10 §4.1 and §8 · flows v0.9 §12 — ownership is now specified as a set, with the four shared actions named",
   F22:"model v0.25 §5.1, §5.2 and §10.15 · matrix v0.18 §2.6 and §4 · glossary v0.12 §7 · flows v0.10 §10 — both actions are now scoped; the conversion they were standing in for is open item §10.15 for you to decide",
   F23:"matrix v0.18 §2 note · flows v0.10 §7 — stated as a gap with the two candidate shapes; undecided, and §1.7's meaning depends on which you take",
+  F24:"model v0.26 §5.4, §3.2 and §9 #39 · matrix v0.19 §1.1, §2.3, §2.5 and §2.6 · glossary v0.13 §7 — decided, and recorded as a resolved decision rather than a finding against the text",
   F21:"model v0.24 §3.2, §5.3, §5.4 and the §5 note · matrix v0.17 §1.1, §2.1, §2.3 and §2.5 · glossary v0.11 §5.1 and §7 — the declaration is scoped to an outbound load and §5 now says every action needs its position precondition; whether sealing should be offered on an inbound trailer at all is left open"
 };
 SEEDED.forEach(f => { if (APPLIED[f.id]) f.fixed = APPLIED[f.id]; });

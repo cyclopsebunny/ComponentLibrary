@@ -86,10 +86,10 @@ Two scenarios sit in that group:
 
 ## Findings
 
-Twenty-three findings are built in — places where the four documents could not all be implemented
-at once, plus seven things they did not know about. Twenty-one have been applied back to the
-documents in `../../docs/facility-rethink/` — model v0.25, matrix v0.18, flows v0.10,
-glossary v0.12 — and the rail marks which. Seven things are still open there:
+Twenty-four findings are built in — places where the four documents could not all be implemented
+at once, plus eight things they did not know about. Twenty-two have been applied back to the
+documents in `../../docs/facility-rethink/` — model v0.26, matrix v0.19, flows v0.10,
+glossary v0.13 — and the rail marks which. Seven things are still open there:
 
 - **Nothing converts a live visit to a drop (F22, model §10.15).** Drivers decide not to wait;
   the catalog has no action for it, and the two that were standing in for it — the yard-team
@@ -140,7 +140,7 @@ you are standing — they keep the scenario, the step and the state with them.
 
 ## Source documents
 
-Built against `yard-dock-operations-model.md` v0.25, `flows.md` v0.10,
-`action-availability-matrix.md` v0.18 and `glossary.md` v0.12, which live beside this bench in
+Built against `yard-dock-operations-model.md` v0.26, `flows.md` v0.10,
+`action-availability-matrix.md` v0.19 and `glossary.md` v0.13, which live beside this bench in
 `../../docs/facility-rethink/`. Every section reference in the page points into them, and the
 two should be changed together — that is the whole arrangement.

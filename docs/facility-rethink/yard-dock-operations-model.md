@@ -1,7 +1,15 @@
 # Yard, Dock & Appointment Operations — Domain Model and UI Specification
 
-**Status:** Draft v0.25 — a live load stays with its driver
+**Status:** Draft v0.26 — sealing is an outbound-load action
 **Purpose:** Define the entities, independent state dimensions, actions, derived work queues, and trailer-card display rules needed to manage trailers, shipments, and appointments at a distribution facility.
+
+### Changes from v0.25
+
+Reported from operations, closing v0.24's one open residue: a dock worker cannot seal a trailer on an inbound load. You would not seal one before it is loaded, and there is no reason to seal an unloaded or empty trailer — while breaking a seal stays available, because an inbound trailer arrives sealed.
+
+- **`SEAL_TRAILER` requires an `ON_BOARD` *outbound* row** (§5.4, §9 #39). "≥1 `ON_BOARD` row" satisfied all three of those cases at once: inbound rows begin `ON_BOARD` (§2.7), so the action was offered on the apron before the trailer was unloaded.
+- **Its fill requirement is unconditional again** (§3.2). v0.24 scoped it to outbound freight to avoid breadcrumbing to a declaration that was unavailable; with sealing itself scoped there is always a load to declare, so the qualifier is gone.
+- **§9 #39 recorded.** Sealing and the fill declaration now share one precondition, which is the useful way to remember it: both are statements about a load this facility put on.
 
 ### Changes from v0.24
 
@@ -740,7 +748,7 @@ With one shipment per trailer, loaded meant full. With several, it doesn't, and 
 
 This document takes the declaration. It is cheaper, it is honest about where the knowledge actually lives, and sealing already requires a human decision. Consequences:
 
-- `SEAL_TRAILER` requires `fill_declaration = COMPLETE` **when an outbound load is aboard**.
+- `SEAL_TRAILER` requires `fill_declaration = COMPLETE`. It needs no qualifier, because sealing itself requires an outbound load aboard (§9 #39) — the two actions share one precondition.
 - `AUTHORIZE_DEPARTURE` for a TAKE leg carrying **outbound** freight requires `COMPLETE`.
 - A trailer with freight and `fill_declaration = OPEN` is a trailer still accepting shipments — a real and useful state, and one that should be visible in the dock work queue as available capacity.
 
@@ -1152,7 +1160,7 @@ The planner-driven path is the original requirement to send an empty trailer to 
 |---|---|---|
 | `ASSIGN_SHIPMENT` | **Exception path** (§9 #37) — for preloads and empty-trailer-at-a-dock, which have no appointment to derive from. Outbound; shipment `PLANNED` with no TrailerLoad row; **trailer position ≠ `OFF_SITE`** (§9 #2); trailer `IN_SERVICE`; `fill_declaration = OPEN`; trailer has **no inbound rows at all** (§9 #16); `empty_verification ≠ UNVERIFIED` (§9 #6) | TrailerLoad row created `ASSIGNED`; shipment → `ASSIGNED` |
 | `UNASSIGN_SHIPMENT` | Row `ASSIGNED` (never `LOADING`, `PART_LOADED`, or later — §9 #5) | Row deleted; shipment → `PLANNED` |
-| `SEAL_TRAILER` | **Trailer on site** — sealing is a physical act; ≥1 `ON_BOARD` row; `fill_declaration = COMPLETE` **if an outbound row is `ON_BOARD`**, scoped as `AUTHORIZE_DEPARTURE` and `READY_TO_DEPART` already scope it (§3.2) — a trailer leaving with inbound residual freight is a real sealing candidate with no load to declare; **no `PART_LOADED` rows**; no `ACTIVE` session | Seal recorded; outbound shipments → `STAGED` |
+| `SEAL_TRAILER` | **Trailer on site** — sealing is a physical act; **≥1 `ON_BOARD` row whose direction is `OUTBOUND`** — the same test `DECLARE_FILL_COMPLETE` uses, and for the same reason: sealing is for a load going out (§9 #39). It rules out sealing before the load is aboard, sealing an emptied trailer, and re-sealing an inbound trailer, in one condition; `fill_declaration = COMPLETE`; **no `PART_LOADED` rows**; no `ACTIVE` session | Seal recorded; outbound shipments → `STAGED` |
 | `BREAK_SEAL` | Sealed | Seal cleared; shipments → `LOADED`; reason code required |
 
 ### 5.5 Trailer
@@ -1450,6 +1458,7 @@ Manual overrides (`ADJUST_STATE`), cancellations, seal breaks, and placement var
 | 36 | **Use "dock" rather than "door" consistently** | Full rename (§9 #36). Fixes an inconsistency present since v0.1 — `DockStay`, `DockSession`, and `Dockpass` already used dock while the position, its assignment entity, and four action names used door. Forced a queue split: **Dock Assignment Queue** vs **Dock Work Queue**, which were previously "Door Assignment Queue" and "Dock Queue" and would have collapsed into one name |
 | 37 | **For any appointment, inbound or outbound, the shipment being delivered or shipped is already known — it need not wait to be added at the dock** | The appointment is the source of what is moving. `BIND_TRAILER_TO_LEG` creates TrailerLoad rows for **both** leg directions (§5.1); sessions **open pre-populated** from the trailer's eligible rows (§2.7). `ADD_`/`REMOVE_SHIPMENT_FROM_SESSION` and `ASSIGN_SHIPMENT` all become **exception paths** rather than the normal flow. Inbound interaction inverts from add-what-to-work to remove-what-stays-aboard, which is the safer default. Removals feed the residual list (§2.5), eliminating a duplicated fact |
 | 38 | **Dock presence sensors exist, so arrival at a dock is observed; "spotted" is a real state but the name was unfamiliar** | Sensors modelled as `Dock.sensor_state` — an **observation**, distinct from the trailer's believed position (§2.9). `SPOTTED` **removed from the destination dimension** and narrowed to its industry sense: at a dock, sensor-confirmed. Stored destination value replaced by derived `AT_DESTINATION` (§6.1). Three mismatch flags added. Spot-in can be auto-confirmed, removing data entry. Also in this pass: `CLEAR_VISIT` → `AUTHORIZE_DEPARTURE` and `CLEARED` → `AUTHORIZED_TO_DEPART`, resolving a banned-term inconsistency |
+| 39 | **A dock worker cannot seal a trailer on an inbound load. You would not seal one before it is loaded, and there is no reason to seal an unloaded or empty trailer — but they could unseal one** | `SEAL_TRAILER` requires **≥1 `ON_BOARD` outbound row** (§5.4), the same precondition as `DECLARE_FILL_COMPLETE` (§5.3): both are statements about a load this facility put on. One condition covers all three cases, because outbound rows only reach `ON_BOARD` at `END_SESSION`. `BREAK_SEAL` is deliberately **not** scoped — it needs only `sealed`, since an inbound trailer arrives sealed and breaking it is the first thing receiving does. Makes §3.2's fill requirement unconditional again, and retires the asymmetry where `AUTHORIZE_DEPARTURE` and `READY_TO_DEPART` tested direction and sealing did not. *Came from operations, not from the engine: nothing in the four documents contradicted itself here — matrix §2.3 keyed sealing on "freight aboard" without asking whose freight, and every table agreed with every other* |
 
 ### 9.1 Recommendation on no-show preloads (open decision #9)
 

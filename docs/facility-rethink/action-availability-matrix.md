@@ -1,8 +1,13 @@
 # Action Availability Matrix
 
-**Companion to:** `yard-dock-operations-model.md` v0.25
-**Status:** Draft v0.18 — one visit, two trailers, and this document is keyed on one
+**Companion to:** `yard-dock-operations-model.md` v0.26
+**Status:** Draft v0.19 — sealing is for a load going out
 **Purpose:** For any trailer in any state, define which actions appear, which appear disabled, which are hidden, and what the user is told — so a screen can be built without re-deriving preconditions from the action catalog.
+
+### Changes from v0.18
+Reported from operations: a dock worker cannot seal a trailer on an inbound load — not before it is loaded, and not once it is unloaded or empty. Breaking a seal is unaffected.
+- **§1.1, §2.3, §2.5, §2.6:** `SEAL_TRAILER` is keyed on an **outbound** load aboard, not "freight aboard". This document keyed it on freight without asking whose, which was true of an inbound trailer from the moment it arrived (model §9 #39).
+- **§2.3:** the fill requirement loses its v0.18 qualifier. With sealing scoped there is always a load to declare, so it can no longer point at an unavailable action.
 
 ### Changes from v0.17
 Reported: at a dock, on a live inbound load, the driver was offered `DROP_TRAILER` and `DECLARE_TAKE_LEG_CHANGE`.
@@ -101,8 +106,8 @@ Worked examples, since the rule is a judgment and examples are how it gets appli
 | Action | Blocking condition | Clearing action | Treatment |
 |---|---|---|---|
 | `PULL_FROM_DOCK` | Session `OPEN` | `END_SESSION` / `CANCEL_SESSION` — right here | Disabled + reason |
-| `SEAL_TRAILER` | Fill `OPEN`, **outbound load aboard** | `DECLARE_FILL_COMPLETE` — right here | Disabled + reason |
-| `SEAL_TRAILER` | No freight aboard | Nothing. An empty trailer is not a sealing candidate | Hidden |
+| `SEAL_TRAILER` | Fill `OPEN` | `DECLARE_FILL_COMPLETE` — right here | Disabled + reason |
+| `SEAL_TRAILER` | No outbound load aboard | Nothing. Sealing is for a load going out: there is nothing to seal before it is loaded, and no reason to seal an emptied or always-empty trailer (model §9 #39). `BREAK_SEAL` is unaffected — an inbound trailer arrives sealed | Hidden |
 | `DECLARE_FILL_COMPLETE` | No outbound load aboard | Nothing anyone can do to this trailer. Freight that arrived aboard is not a load this facility put on | Hidden |
 | `ASSIGN_SHIPMENT` | Fill `COMPLETE` | `REOPEN_FILL` — right here | Disabled + reason |
 | `ASSIGN_SHIPMENT` | Trailer out of service | `RETURN_TO_SERVICE` — right here | Disabled + reason |
@@ -279,11 +284,12 @@ This is the section v0.2 got wrong. Treatment is listed per condition.
 | `REOPEN_FILL` | Fill `COMPLETE`, unsealed | **A** | — |
 | | Sealed | **D** | "Break the seal first" |
 | | Fill already `OPEN` | **H** | Nothing to reopen |
-| `SEAL_TRAILER` | Freight aboard; fill `COMPLETE` **if any of it is an outbound load** | **A** | — |
-| | Fill `OPEN` **and an outbound load aboard** | **D** | "The load has not been declared complete" |
+| `SEAL_TRAILER` | **Outbound** load aboard; fill `COMPLETE` | **A** | — |
+| | Fill `OPEN` | **D** | "The load has not been declared complete" |
 | | `PART_LOADED` row exists | **D** | "Resolve the part-loaded shipment first" |
-| | No freight aboard | **H** | Not a candidate |
+| | No outbound load aboard | **H** | Not a candidate. **Not "no freight aboard"** — an inbound trailer's rows begin `ON_BOARD`, so the loose reading offered sealing on the apron before it had been unloaded (model §9 #39) |
 | | Trailer not on site | **H** | Sealing is a physical act. Nothing in model §5 said so |
+| `BREAK_SEAL` | Sealed | **A** | **Deliberately not scoped to outbound.** An inbound trailer arrives sealed and breaking it is the first thing receiving does |
 | `BREAK_SEAL` | Sealed | **A** | Reason code required |
 | | Not sealed | **H** | Nothing to break |
 | `CREATE_MOVE_TASK` | No open move | **A** | — |
@@ -321,7 +327,7 @@ The busiest context, and where a single "trailer status" field would fail hardes
 | `ASSIGN_SHIPMENT` | **A** | **A** | **A** if fill `OPEN` | **A** |
 | `UNASSIGN_SHIPMENT` | **A** if any `ASSIGNED` | **A** if not in session | **H** | **A** if any `ASSIGNED` |
 | `DECLARE_FILL_COMPLETE` | **A** *if an outbound load is already aboard from an earlier session* — otherwise **H**, nothing has been loaded yet | **D** "End or cancel the open session first" | **D** "Work is in progress at the dock" | **A** |
-| `SEAL_TRAILER` | **A**/**D** — same multi-session proviso | **D** session open | **D** session active | **A**/**D** needs fill complete |
+| `SEAL_TRAILER` | **A**/**D** — same multi-session proviso; **H** on an unload session's trailer, which has no outbound load aboard | **D** session open | **D** session active | **A**/**D** needs fill complete; **H** after an unload |
 | `PULL_FROM_DOCK` | **A** | **D** "End or cancel the open session first" | **D** "Work is in progress at the dock" | **A** |
 | `CREATE_MOVE_TASK` | **A** | **D** same reason | **D** same reason | **A** |
 | `CORRECT_TRAILER_IDENTITY` | **A** supervisor | **A** supervisor | **D** "Cannot renumber during active work" | **A** supervisor |
@@ -340,7 +346,7 @@ The `ENDED → OPEN` column is the sequential-session case: unload, end, assign,
 | `DECLARE_TAKE_LEG_CHANGE` | A | Substitution or bobtail. **Supervisor confirmation if the substitute carries freight** (§9 #27). **This is the only table that lists the action, and that placement was carrying a precondition the catalog did not state**: it belongs where the driver is leaving. **H** while a dock session is open or active on the TAKE-leg trailer — he is not departing, the dock is working — and **H** where the TAKE leg names the trailer he brought, which is a live load or an own-trailer preload: there is nothing to substitute, and leaving his own trailer here is model §10.15's conversion |
 | `AUTHORIZE_DEPARTURE` | A / D | **Every reason below applies only to the trailer this visit is leaving with** — the TAKE-leg trailer the driver currently has hooked (model §10.13). A driver who hooked nothing departs bobtail with none of these checks, because he is taking nothing: **A**. **D**: "Unexpected freight aboard — verify against the manifest" · "Declare fill complete first" · "Seal the trailer first" · "A move is already open for this trailer" · "End or cancel the open session first" |
 | `CHECK_OUT` | A / D | **D** "Visit is not authorized to depart". **No camera dependency** — reads are too slow to gate the lane (§9 #28) |
-| `SEAL_TRAILER` | A / D | Last chance before departure |
+| `SEAL_TRAILER` | A / D / **H** | Last chance before departure — and **H** where the trailer carries no outbound load, which is every inbound departure including one leaving with residual freight (model §9 #39) |
 | `RESOLVE_IDENTIFICATION` | A / H | Entry reads only. Exit reads land after departure (§2.7) |
 
 ### 2.7 After departure — `OFF_SITE`
