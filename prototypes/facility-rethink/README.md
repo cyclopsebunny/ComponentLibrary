@@ -86,10 +86,19 @@ Two scenarios sit in that group:
 
 ## Findings
 
-Twenty-one findings are built in — places where the four documents could not all be implemented
-at once, plus five things they did not know about. Nineteen have been applied back to the
-documents in `../../docs/facility-rethink/` — model v0.24, matrix v0.17, flows v0.9,
-glossary v0.11 — and the rail marks which. Five things are still open there:
+Twenty-three findings are built in — places where the four documents could not all be implemented
+at once, plus seven things they did not know about. Twenty-one have been applied back to the
+documents in `../../docs/facility-rethink/` — model v0.25, matrix v0.18, flows v0.10,
+glossary v0.12 — and the rail marks which. Seven things are still open there:
+
+- **Nothing converts a live visit to a drop (F22, model §10.15).** Drivers decide not to wait;
+  the catalog has no action for it, and the two that were standing in for it — the yard-team
+  handoff and the take-leg amendment — did the wrong things silently. The conversion moves the
+  visit type, the TAKE leg, the trailer's responsibility mid-session and the carrier's detention
+  arithmetic together, so it is a decision rather than an edit.
+- **What a screen is about when a visit has two trailers (F23).** Drop-and-hook's own next step
+  is on the other trailer, and matrix §2 is keyed on one. A visit-scoped surface, or a stated
+  rule for switching subject — and which one changes what matrix §1.7's derived primary means.
 
 - **The role → action mapping (F19).** Five actions are permission-gated; the other thirty-five
   have no owning role anywhere in the four documents. glossary §4.1 now holds an inferred roster
@@ -131,7 +140,7 @@ you are standing — they keep the scenario, the step and the state with them.
 
 ## Source documents
 
-Built against `yard-dock-operations-model.md` v0.24, `flows.md` v0.9,
-`action-availability-matrix.md` v0.17 and `glossary.md` v0.11, which live beside this bench in
+Built against `yard-dock-operations-model.md` v0.25, `flows.md` v0.10,
+`action-availability-matrix.md` v0.18 and `glossary.md` v0.12, which live beside this bench in
 `../../docs/facility-rethink/`. Every section reference in the page points into them, and the
 two should be changed together — that is the whole arrangement.

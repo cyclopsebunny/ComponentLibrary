@@ -461,7 +461,7 @@ dialog footer{padding:11px 15px; border-top:1px solid var(--line); display:flex;
 <header class="top">
   <span class="brand">
     <b>Yard Flow Bench</b>
-    <span>Walks the yard &amp; dock document set against itself — model v0.24 · flows v0.9 · matrix v0.17 · glossary v0.11</span>
+    <span>Walks the yard &amp; dock document set against itself — model v0.25 · flows v0.10 · matrix v0.18 · glossary v0.12</span>
   </span>
   <span class="topctl">
     <button class="mini" id="cfgbtn" type="button">Facility config</button>
@@ -767,7 +767,19 @@ function defaultConfig(){
 }
 
 /* ---- constructors ------------------------------------------------------ */
+/* Scenario seeds name trailers explicitly ("T2"), and bindLeg generates ids
+   from the same counter — so a generated "T"+seq could land on a seeded id and
+   silently overwrite that trailer. It did: on drop-and-hook the arriving
+   trailer took over the record of the one standing in the yard, and the flow
+   whose entire point is two trailers ran as one. Nothing checked, because the
+   collision leaves a valid world. Found while verifying F22. */
+function freeTrailerId(w){
+  let id;
+  do { id = "T" + (w.seq++); } while (w.trailers[id]);
+  return id;
+}
 function mkTrailer(w, o){
+  if (w.trailers[o.id]) throw new Error("trailer id "+o.id+" already exists");
   const t = Object.assign({
     id:o.id, number:o.number, carrier:o.carrier||"SWIFT", kind:o.kind||"53' DRY",
     position:"OFF_SITE", dock:null, spot:null, lot:null,
@@ -1615,7 +1627,27 @@ DECLARE_TAKE_LEG_CHANGE:{
     if (v.presence==="DEPARTED") return [H(CLS.PHYSICAL,"Already gone — this is CORRECT_DEPARTURE now")];
     if (!["ON_SITE","AUTHORIZED_TO_DEPART"].includes(v.presence))
       return [H(CLS.PHYSICAL,"Only from on site, before check-out")];
-    if (!takeLeg(w,v)) return [H(CLS.STRUCTURAL,"No TAKE leg to amend")];
+    const tl0 = takeLeg(w,v);
+    if (!tl0) return [H(CLS.STRUCTURAL,"No TAKE leg to amend")];
+    /* Reported alongside the drop, in the same state: at a dock, on a live
+       inbound load. Model §5.1 says "ON_SITE or later, before CHECK_OUT",
+       which is the broadest condition in the set — while flows puts this at
+       P5a, matrix lists it only under AT_GATE_OUT (§2.6), and §9 #27 says
+       drivers declare substitutions "at checkout". Two narrower conditions,
+       both of which the reported state fails. Finding F22. */
+    /* 1. He is not leaving: the dock is working the trailer in question. */
+    const st0 = tl0.trailer_id && openSession(w, tl0.trailer_id);
+    if (st0) return [H(CLS.PHYSICAL,"The dock is working this trailer — this is a departure "+
+      "declaration, and he is not leaving yet")];
+    /* 2. There is nothing to substitute. The action was written for a
+       self-service pickup — a TAKE leg on a trailer the driver did not bring
+       (flows §7 P3). Where both legs name the same trailer, substituting it
+       means leaving his own trailer here, which is the visit-type conversion
+       above rather than an amendment. */
+    const bl0 = bringLeg(w,v);
+    if (bl0 && tl0.trailer_id && bl0.trailer_id===tl0.trailer_id)
+      return [H(CLS.STRUCTURAL,"He is leaving with the trailer he brought — substituting it "+
+        "means leaving that one here, which is a drop and not an amendment")];
     return [];
   },
   form(w,c){
@@ -1729,6 +1761,20 @@ DROP_TRAILER:{
     if (!hasTractor(w,t.id)) return [H(CLS.STRUCTURAL,"No tractor attached")];
     if (!["DOCK","YARD_SPOT","LOT"].includes(t.position))
       return [H(CLS.PHYSICAL,"Drop happens at a dock or a yard spot")];
+    /* Reported: at a dock the driver of a live inbound load was offered this.
+       Model §5.2's precondition is only "at a dock or yard spot; tractor
+       attached", and a live load satisfies both from the moment it is spotted
+       — so the driver was offered the handoff while the dock crew was inside
+       his trailer. A live visit *is* the driver staying with the trailer
+       (glossary §12); leaving it behind converts the visit to a drop, which
+       is a different appointment type with different consequences and no
+       action in §5 that performs the conversion (model §10.15). The engine's
+       own primary derivation already tested visit_type here — only the gate
+       did not. Finding F22. */
+    const vv = visitOfTrailer(w,t.id);
+    if (vv && vv.visit_type==="LIVE")
+      return [H(CLS.STRUCTURAL,"A live load stays with its driver — leaving it here is a drop, "+
+        "and no action converts the visit")];
     return [];
   },
   apply(w,c){
@@ -2583,7 +2629,7 @@ function bindLeg(w, v, leg, number, source){
   if (!t){
     const near = Object.values(w.trailers).find(x => x.number!==number &&
       editDistance(x.number, number)===1);
-    t = mkTrailer(w, {id:"T"+(w.seq++), number, carrier:leg.carrier||"SWIFT"});
+    t = mkTrailer(w, {id:freeTrailerId(w), number, carrier:leg.carrier||"SWIFT"});
     t.first_visit = true;
     if (near) log("dev","<b>Near-match warning</b> — "+number+" is one character from "+
       near.number+", seen here before. Offered before check-in completes (§5.1).");
@@ -3185,8 +3231,13 @@ const SCENARIOS = [
     st("P2","P2","ASSIGN_YARD","Dispatcher","A drop point for the trailer being brought.","flows §7"),
     st("P3a","P3","POSITION_TRAILER","Driver","Takes T1 to its spot.","flows §7"),
     st("P3b","P3","DROP_TRAILER","Driver","T1 dropped — yard-team responsibility.","flows §7 P3b"),
+    /* The step acts on the OTHER trailer of the swap, and without the focus the
+       board could not offer it: every gate reads the context trailer, and the
+       context was still the one he had just dropped. Finding F23 — a visit can
+       be about two trailers and matrix §2 is keyed on one. */
     st("P3c","P3","HOOK_TRAILER","Driver","T2 hooked.","flows §7 P3",
-      w => hasTractor(w,"T2") ? [] : ["T2 should be under road-tractor custody"]),
+      w => hasTractor(w,"T2") ? [] : ["T2 should be under road-tractor custody"],
+      false, {t:"T2"}),
     st("P5","P5","AUTHORIZE_DEPARTURE","Clerk","Authorized on T2. T1 stays.","flows §7 P5"),
     st("P5b","P5","CHECK_OUT","Gate","T2 departs; T1 remains on site.","flows §7 P5",
       w => { const o=[];
@@ -3579,7 +3630,11 @@ const SCENARIOS = [
     w.focusTrailer="T3";
   },
   script:[
-    st("a","P4","ASSIGN_SHIPMENT","Planner","Hidden, with nothing shown. Turn on hidden actions to read the engine's reason, then compare it to matrix §1.1.","stress 7"),
+    /* Marked as expecting a refusal. Without the flag the step's only possible
+       outcome was unreachable: the action is hidden by design, so no chip
+       exists and "Confirm refused" was not offered either. The scenario could
+       not be walked at all. */
+    st("a","P4","ASSIGN_SHIPMENT","Planner","Hidden, with nothing shown. Turn on hidden actions to read the engine's reason, then compare it to matrix §1.1.","stress 7",null,true),
     st("b","P4","MARK_OUT_OF_SERVICE","Maintenance","Now mark it out of service too. Two failing conditions — one disabled-class, one hidden-class — and nothing in matrix §1.1–1.3 says which wins. Finding F9.","matrix §1.3")
   ]
 },
@@ -3737,7 +3792,15 @@ const SEEDED = [
 
 {id:"F21", sev:"blocks", title:"An inbound trailer satisfies every precondition for declaring its load complete",
  body:"<b>Reported: on an inbound live load the dock lead could declare the load complete as soon as the driver had registered</b> — before the visit was admitted, let alone docked.<br><br>The precondition model §5.3 states is <b>“≥1 <span class=\"id\">ON_BOARD</span> row”</b>, and an inbound trailer's rows <i>begin</i> at <span class=\"id\">ON_BOARD</span>, because the freight is already aboard when it arrives — glossary §5.2 says so in as many words. So the condition was true of every loaded inbound trailer in the world, including one standing outside the fence having done nothing but scan the QR sign.<br><br><b>The declaration is about an outbound load, and nothing said so.</b> Three documents describe it as a statement about the trailer: “no more freight is going on” (glossary §7), “the system cannot infer fullness” (model §3.2), “freight aboard” as the availability condition (matrix §2.3, §2.5). Its only consumers are sealing and departure, and <i>two of the three already scoped themselves to outbound freight aboard</i> — <span class=\"id\">AUTHORIZE_DEPARTURE</span> and <span class=\"id\">READY_TO_DEPART</span> both test direction. The producer never did. Requiring an outbound <span class=\"id\">ON_BOARD</span> row also gives the reported rule for nothing, since outbound rows reach <span class=\"id\">ON_BOARD</span> only at <span class=\"id\">END_SESSION</span>.<br><br><b>Then the next control along was wrong too.</b> With the declaration scoped, <span class=\"id\">SEAL_TRAILER</span> became available on the same off-site trailer — it had only ever been blocked by the fill requirement, and it has no position precondition at all. Which is the general defect: <b>matrix §2 is keyed by position, so an action's absence from a position's table is the only place “not available there” is ever said</b>, and model §5 carries a position precondition on one action out of forty. Anything built from the catalog alone offers dock actions on trailers that are not here. §5 now says every action needs its position written in.<br><br>Two smaller consequences. Sealing's fill requirement is now scoped to outbound as well, or a trailer leaving with inbound residual freight — the LTL partial receipt, which is a legitimate outcome — asks for a declaration that is correctly unavailable: a new dead end of the kind F18 was about. And matrix §2.5's <span class=\"id\">No session</span> column for both actions turns out to mean the multi-session case only.<br><br>Left open: matrix §2.3 lists sealing as available with any freight aboard, so it is still offered on an inbound trailer on the apron. Pointless rather than wrong, and tightening it is an operational call rather than an editorial one.",
- refs:"model §5.3 · model §5.4 · model §3.2 · model §5 note · matrix §2.1 · matrix §2.3 · matrix §2.5 · glossary §5.1 · glossary §5.2 · glossary §7"}
+ refs:"model §5.3 · model §5.4 · model §3.2 · model §5 note · matrix §2.1 · matrix §2.3 · matrix §2.5 · glossary §5.1 · glossary §5.2 · glossary §7"},
+
+{id:"F22", sev:"blocks", title:"A live load's driver was offered the handoff, and the right fix leaves an operation with no action",
+ body:"<b>Reported: at a dock, on a live inbound load, the driver was offered <span class=\"id\">DROP_TRAILER</span> and <span class=\"id\">DECLARE_TAKE_LEG_CHANGE</span></b> — the first while the dock crew was inside his trailer.<br><br><b>Both are model §5 stating the loosest condition in the set.</b> <span class=\"id\">DROP_TRAILER</span>: “at a dock or yard spot; tractor attached” — which a live load satisfies from the moment it is spotted. flows tells a different story by omission: its handoff step <b>P3b appears in §5, §6a and §7 and in neither live flow</b>, because on a live load the driver keeps the trailer from arrival to departure. The engine's own primary derivation already tested <span class=\"id\">visit_type</span> here — only the gate did not.<br><br><span class=\"id\">DECLARE_TAKE_LEG_CHANGE</span>: “visit ON_SITE or later, before CHECK_OUT”, against three documents that place it at the point of leaving — flows at <b>P5a</b>, matrix only under <b>AT_GATE_OUT</b> (§2.6), and §9 #27's “drivers declare substitutions <i>at checkout</i>”. And the action was written for a <b>self-service pickup</b> (flows §7 P3): where both legs name one trailer there is nothing to substitute — clearing the TAKE leg means abandoning the trailer he arrived with.<br><br><b>Which is the part worth arguing about.</b> Closing both holes is right and it closes off something drivers really do: decide not to wait. A live unload runs long, the clock runs out, and he asks to drop and go. There is no action for that. It is not one field either — visit type, the TAKE leg, the trailer's responsibility mid-session, and the facility's agreement all move together, and the carrier's detention arithmetic turns on it. Written up as open item <b>§10.15</b> with a recommendation: a first-class <span class=\"id\">CONVERT_VISIT_TYPE</span>, because an event log that names what happened settles the dispute three weeks later and two unrelated entries do not.<br><br>So the bench now hides both, with reasons that say the conversion is what is missing rather than pretending the operation cannot happen.",
+ refs:"model §5.1 · model §5.2 · model §10.15 · model §9 #27 · matrix §2.6 · matrix §4 · flows §7 · flows §10 · glossary §7"},
+
+{id:"F23", sev:"gap", title:"A visit can be about two trailers, and every availability table is keyed on one",
+ body:"<b>Found while verifying F22, by fixing drop-and-hook so it could be walked at all.</b> Flow 5 brings one trailer and takes a different one. After the drop, the driver's next action — hook the other trailer — is on a <i>different object</i> from the one every preceding step was about, and a surface scoped to one trailer does not offer it. In the bench the step was simply unreachable: every gate reads the context trailer, and the context was the trailer he had just dropped.<br><br>Nothing in the four documents resolves this. Matrix §2's tables are keyed on <b>a</b> trailer's position; §1.7 derives the primary action <b>per trailer</b>; flows §7 walks two trailers through one visit without saying what the screen is following. The two-trailer visit needs either a <b>visit-scoped</b> surface spanning both legs, or an explicit rule for when a trailer-scoped surface changes subject — and which it is affects what §1.7 can even mean, since “the driver's next step” may not be on the trailer in front of you.<br><br>This is the same shape as model §10.14's two tracks after a handoff, one object further out: there the driver and the trailer diverge in <i>time</i>, here the driver's own steps move between <i>objects</i>. The bench's answer is a per-step focus hint, which is a stage direction and not a rule.",
+ refs:"matrix §2 · matrix §1.7 · flows §7 · model §10.14 · model §4"}
 ];
 const SEV = {
   blocks:{l:"Blocks a flow", t:"r"}, contradiction:{l:"Documents disagree", t:"r"},
@@ -3767,6 +3830,8 @@ const APPLIED = {
   F18:"matrix v0.14 §1.1, §3.3 and §3.4 · glossary v0.8 §7 and §11",
   F19:"matrix v0.15 §1.8 and §5 · glossary v0.9 §4.1 and §8 · flows v0.8 §12 — the roster and the clearing-action link are now specified; the columns stay inferred until the catalog carries owning roles",
   F20:"matrix v0.16 §1.8 · glossary v0.10 §4.1 and §8 · flows v0.9 §12 — ownership is now specified as a set, with the four shared actions named",
+  F22:"model v0.25 §5.1, §5.2 and §10.15 · matrix v0.18 §2.6 and §4 · glossary v0.12 §7 · flows v0.10 §10 — both actions are now scoped; the conversion they were standing in for is open item §10.15 for you to decide",
+  F23:"matrix v0.18 §2 note · flows v0.10 §7 — stated as a gap with the two candidate shapes; undecided, and §1.7's meaning depends on which you take",
   F21:"model v0.24 §3.2, §5.3, §5.4 and the §5 note · matrix v0.17 §1.1, §2.1, §2.3 and §2.5 · glossary v0.11 §5.1 and §7 — the declaration is scoped to an outbound load and §5 now says every action needs its position precondition; whether sealing should be offered on an inbound trailer at all is left open"
 };
 SEEDED.forEach(f => { if (APPLIED[f.id]) f.fixed = APPLIED[f.id]; });

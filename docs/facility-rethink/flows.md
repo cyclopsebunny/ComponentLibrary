@@ -1,8 +1,12 @@
 # Operational Flows — States, Flags, and Actions by Step
 
 **Companion to:** `yard-dock-operations-model.md` v0.23, `action-availability-matrix.md` v0.15, `glossary.md` v0.9
-**Status:** Draft v0.9 — one cell, two people
+**Status:** Draft v0.10 — two trailers, one screen
 **Purpose:** Walk each appointment type from start to finish, showing at every step which states change, which flags can appear, which actions are available, and who acts.
+
+### Changes from v0.9
+- **§7 note:** after P3b the driver's next step is on the *other* trailer, and nothing says how a screen follows that. A trailer-scoped surface does not offer P3c at all (matrix §2 note).
+- **§10 note added:** P3b — the handoff — appears in §5, §6a and §7 only, never in the two live flows. That was already true here and nowhere else; `DROP_TRAILER` was available on live loads because model §5.2's precondition never mentioned the visit type (model §5.2, §10.15).
 
 ### Changes from v0.8
 - **§12 item 3:** three Actor cells name two people — `Guard / driver`, `Dock lead / supervisor`, `Wash / maintenance`. Read as single strings they are three roles nobody has defined; read as sets they are three actions with two owners each, which is what they are (glossary §4.1, matrix §1.8).
@@ -220,6 +224,8 @@ This is Flow 3's P1–P3b and Flow 4's P3–P5b, in one appointment with two leg
 
 **The only reason this works without special-casing is that trailer identity lives on the leg.** Nothing here is a distinct flow; it is two legs of the spine running in one visit.
 
+**But the step between P3b and P3 is a change of subject, and no document handles it.** After the drop, the driver's next action is on T2 — a different object from the one every preceding step was about. Matrix §2 is keyed on one trailer's position and §1.7 derives the primary per trailer, so a trailer-scoped screen following T1 does not offer `HOOK_TRAILER` on T2 at all: the driver's own next step is invisible. Either this visit needs a surface scoped to the *visit* and spanning both legs, or there has to be a stated rule for when a trailer-scoped surface switches subject. See matrix §2.
+
 ---
 
 ## 8. Flow 6 — Company driver takes a staged load
@@ -276,6 +282,7 @@ Two things this table makes obvious that prose does not:
 - **Flow 3 runs P2 twice** — once for the driver's drop point, again when a dock frees up. It is the only flow where the same phase recurs after the visit closes.
 - **Flow 7 has no P1 at all**, which is why every arrival path in the model had to be revisited to accommodate it.
 - **Flow 4a repeats P1 and P5**, which nothing else does. A flow is a subset of the spine *with repeats*, not a prefix of it — and the Visits column is now the first thing to read, because it is what separates 4a from flow 2 and from flow 4.
+- **P3 reads "driver" for the live flows and names the yard team for the drops, and that distinction is load-bearing.** The handoff step P3b belongs to §5, §6a and §7 and appears in neither live flow: on a live load the driver keeps the trailer from arrival to departure. This document has said so from the start by omission, and nothing else did — model §5.2's `DROP_TRAILER` precondition named only a position and a tractor, so the handoff was offered to a live load's driver while the dock crew was unloading his trailer (model §10.15).
 
 ---
 

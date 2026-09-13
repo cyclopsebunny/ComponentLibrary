@@ -1,8 +1,14 @@
 # Action Availability Matrix
 
-**Companion to:** `yard-dock-operations-model.md` v0.24
-**Status:** Draft v0.17 — freight aboard is not the same as a load put on here
+**Companion to:** `yard-dock-operations-model.md` v0.25
+**Status:** Draft v0.18 — one visit, two trailers, and this document is keyed on one
 **Purpose:** For any trailer in any state, define which actions appear, which appear disabled, which are hidden, and what the user is told — so a screen can be built without re-deriving preconditions from the action catalog.
+
+### Changes from v0.17
+Reported: at a dock, on a live inbound load, the driver was offered `DROP_TRAILER` and `DECLARE_TAKE_LEG_CHANGE`.
+- **§2.6:** `DECLARE_TAKE_LEG_CHANGE`'s window is stated, since this is the only table that lists the action and its placement here was doing the work of a precondition (model §5.1).
+- **§4:** the movement table lumped "live load, or a drop not yet dropped" together and offered `DROP_TRAILER` to both. A live load's driver has a destination, not a handoff.
+- **§2 note added: a visit can be about two trailers.** Every table here is keyed on one trailer's position, which cannot express drop-and-hook — where the driver's next step is on the *other* trailer. Nothing says how a screen chooses.
 
 ### Changes from v0.16
 Reported: on an inbound live load the fill declaration was offered before the visit was even admitted.
@@ -200,6 +206,8 @@ This also answers §6 open question 1, which asks for the treatment to become a 
 
 Legend: **A** = available · **D** = disabled with reason · **H** = hidden
 
+**A visit can be about two trailers, and every table below is keyed on one.** Drop-and-hook (flows §7) brings one trailer and takes a different one, so after the drop the driver's next step — hook the other one — is on an object the current table is not about. A screen that scopes itself to one trailer will not offer it, and nothing here or in the model says how the screen should choose: §1.7's derived primary is per trailer, and §2's keys are that trailer's position. The two-trailer visit needs either a visit-scoped surface that spans both, or an explicit rule for which trailer a trailer-scoped surface follows and when it switches.
+
 ### 2.0 The gate is keyed on visit state, not trailer position
 
 Everything else in §2 is keyed on where the trailer is. The gate cannot be, for three reasons:
@@ -329,7 +337,7 @@ The `ENDED → OPEN` column is the sequential-session case: unload, end, assign,
 
 | Action | | Condition / reason |
 |---|---|---|
-| `DECLARE_TAKE_LEG_CHANGE` | A | Substitution or bobtail. **Supervisor confirmation if the substitute carries freight** (§9 #27) |
+| `DECLARE_TAKE_LEG_CHANGE` | A | Substitution or bobtail. **Supervisor confirmation if the substitute carries freight** (§9 #27). **This is the only table that lists the action, and that placement was carrying a precondition the catalog did not state**: it belongs where the driver is leaving. **H** while a dock session is open or active on the TAKE-leg trailer — he is not departing, the dock is working — and **H** where the TAKE leg names the trailer he brought, which is a live load or an own-trailer preload: there is nothing to substitute, and leaving his own trailer here is model §10.15's conversion |
 | `AUTHORIZE_DEPARTURE` | A / D | **Every reason below applies only to the trailer this visit is leaving with** — the TAKE-leg trailer the driver currently has hooked (model §10.13). A driver who hooked nothing departs bobtail with none of these checks, because he is taking nothing: **A**. **D**: "Unexpected freight aboard — verify against the manifest" · "Declare fill complete first" · "Seal the trailer first" · "A move is already open for this trailer" · "End or cancel the open session first" |
 | `CHECK_OUT` | A / D | **D** "Visit is not authorized to depart". **No camera dependency** — reads are too slow to gate the lane (§9 #28) |
 | `SEAL_TRAILER` | A / D | Last chance before departure |
@@ -415,7 +423,7 @@ Reason shown: **"Not permitted for your role"** — never naming which role, sin
 
 | Trailer state | What it needs | Available actions |
 |---|---|---|
-| **Tractor attached** (live load, or a drop not yet dropped) | A destination | `ASSIGN_DOCK`, `ASSIGN_YARD`, `POSITION_TRAILER`, `DROP_TRAILER`. **`CREATE_MOVE_TASK` is H** — "trailer has a driver" is not a blocked condition to explain, it is a different situation entirely (§1.1) |
+| **Tractor attached** (live load, or a drop not yet dropped) | A destination | `ASSIGN_DOCK`, `ASSIGN_YARD`, `POSITION_TRAILER`, and `DROP_TRAILER` **only where the visit is not `LIVE`** — a live load's driver stays with the trailer, so there is no handoff to offer him; leaving it is a conversion to a drop and nothing performs it (model §10.15). **`CREATE_MOVE_TASK` is H** — "trailer has a driver" is not a blocked condition to explain, it is a different situation entirely (§1.1) |
 | **No tractor** (dropped, preloaded, repositioning) | A move task | `CREATE_MOVE_TASK`, then `ASSIGN_MOVE_TASK` → `START_MOVE` → `COMPLETE_MOVE` |
 
 | Move task action | | Notes |

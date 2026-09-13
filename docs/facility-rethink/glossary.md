@@ -1,8 +1,11 @@
 # Glossary — Canonical Terms
 
-**Companion to:** `yard-dock-operations-model.md` v0.24, `action-availability-matrix.md` v0.17
-**Status:** Draft v0.11 — the fill declaration is about an outbound load
+**Companion to:** `yard-dock-operations-model.md` v0.25, `action-availability-matrix.md` v0.18
+**Status:** Draft v0.12 — a live load stays with its driver
 **Purpose:** The single source of truth for every entity, state, action, flag, and label. When this document and another disagree, this one is wrong and should be corrected — but until it is, it is what the product, the training material, and support should say.
+
+### Changes from v0.11
+- **`DROP_TRAILER` and `DECLARE_TAKE_LEG_CHANGE` entries** (§7) say where they do *not* apply. Both were offered to a live load's driver at a dock; a live visit is the driver staying with the trailer, and converting that to a drop is model §10.15's missing action.
 
 ### Changes from v0.10
 - **Fill declaration and `DECLARE_FILL_COMPLETE` reworded** (§5.1, §7). "No more freight is going on" and "the system cannot infer fullness" both read as though the dimension described the trailer, so the precondition was written as "freight aboard" — which an inbound trailer satisfies on arrival. It is about an **outbound load this facility put on** (model §3.2).
@@ -233,7 +236,7 @@ Inbound rows begin at `ON_BOARD` — the freight is already aboard, so there is 
 | `AUTHORIZE_DEPARTURE` | **Authorizes departure.** Verifies legs, freight match, fill complete, seal, no open work. *Formerly `CLEAR_VISIT`* |
 | `CHECK_OUT` | Records the actual departure. Requires `AUTHORIZED_TO_DEPART` |
 | `TURN_AWAY` | Refuses a visit. Reason code required; releases any held dock |
-| `DECLARE_TAKE_LEG_CHANGE` | Driver declares taking a different trailer, or none. Supervisor confirmation if the substitute carries freight |
+| `DECLARE_TAKE_LEG_CHANGE` | Driver declares taking a different trailer, or none — **at the point of leaving** (flows P5a, matrix §2.6), for a **self-service pickup**. Not while a dock session is working the trailer, and not where the TAKE leg names the trailer he brought. Supervisor confirmation if the substitute carries freight |
 | `RESOLVE_IDENTIFICATION` | Settles a disputed or unmatched reading, **recording which source was correct** |
 
 ### 6.2 Dock and yard assignment
@@ -248,7 +251,7 @@ Inbound rows begin at `ON_BOARD` — the freight is already aboard, so there is 
 
 | Action | Definition |
 |---|---|
-| `DROP_TRAILER` | Tractor detaches. **The handoff** — the trailer becomes yard-team responsibility |
+| `DROP_TRAILER` | Tractor detaches. **The handoff** — the trailer becomes yard-team responsibility. **Not on a `LIVE` visit**: a live load stays with its driver, and leaving it behind is a conversion to a drop that nothing performs (model §10.15) |
 | `HOOK_TRAILER` | Tractor attaches. Cancels any pending move task |
 | `CREATE_MOVE_TASK` | Requests a relocation. Only for trailers with **no tractor attached** |
 | `ASSIGN_MOVE_TASK` | Assigns it to a spotter |

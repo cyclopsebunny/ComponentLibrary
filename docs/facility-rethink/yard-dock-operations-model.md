@@ -1,7 +1,15 @@
 # Yard, Dock & Appointment Operations — Domain Model and UI Specification
 
-**Status:** Draft v0.24 — the fill declaration is about an outbound load, and where is a precondition
+**Status:** Draft v0.25 — a live load stays with its driver
 **Purpose:** Define the entities, independent state dimensions, actions, derived work queues, and trailer-card display rules needed to manage trailers, shipments, and appointments at a distribution facility.
+
+### Changes from v0.24
+
+Reported: at a dock, on a live inbound load, the driver was offered `DROP_TRAILER` and `DECLARE_TAKE_LEG_CHANGE`.
+
+- **`DROP_TRAILER` requires a visit that is not `LIVE`** (§5.2). Its stated precondition was "at a dock or yard spot; tractor attached", which a live load satisfies from the moment it is spotted — so the handoff was offered while the dock crew was inside the driver's trailer. A live visit *is* the driver staying with the trailer.
+- **`DECLARE_TAKE_LEG_CHANGE` narrowed** (§5.1). "Visit `ON_SITE` or later, before `CHECK_OUT`" is the broadest condition in the set, while flows places this at **P5a**, matrix lists it only under `AT_GATE_OUT` (§2.6), and §9 #27 says drivers declare substitutions "at checkout". Two conditions added: not while the dock is working the trailer in question, and not where the TAKE leg names the trailer the driver brought.
+- **§10.15 opened — nothing converts a live visit to a drop.** Both of the above close off something drivers really do: decide not to wait. The catalog has no action for it, and the two that were standing in for it did the wrong things silently.
 
 ### Changes from v0.23
 
@@ -1010,7 +1018,7 @@ Each action lists preconditions and effects. This table is the contract: the UI 
 | `VERIFY_EMPTY` | **Nothing aboard** — no `ON_BOARD` or `PART_LOADED` rows. *Not* load state `EMPTY`: an outbound live load is `ASSIGNED_ONLY` from the moment its TAKE leg is bound, so the stricter reading would make this action unavailable on the one flow that needs it | `empty_verification → VERIFIED_EMPTY`. Optional at gate or any time after (§9 #6) |
 | `AUTHORIZE_DEPARTURE` | Every leg has a trailer. **The freight checks apply only to the trailer this visit is actually leaving with** — the TAKE-leg trailer the driver currently has hooked (§3.5). A driver who dropped what he brought and hooked nothing leaves bobtail, and a TAKE leg he has not hooked is a later visit's business (§10.13). For that departing trailer, **freight matching is checked in both directions**: nothing aboard that is not on `expected_shipment_ids` **plus `expected_residual_shipment_ids`** (§2.5) — *and nothing on `expected_shipment_ids` still missing*, which v0.22 and earlier never said and no flag covered (§6.1); if carrying *outbound* freight, `fill_declaration = COMPLETE` and sealed; no open MoveTask or DockSession on TAKE trailer. **`party_type = COMPANY_DRIVER` relaxes the seal and authorization ceremony but not the trailer-to-load match** (§9 #34) | Visit → `AUTHORIZED_TO_DEPART` |
 | `CHECK_OUT` | Visit `AUTHORIZED_TO_DEPART`. **No camera dependency** — reads are too slow to gate the lane (§9 #28) | `presence → DEPARTED` **for this visit**; the trailer the driver has hooked → `OFF_SITE`, custody closed — *not* simply "the TAKE-leg trailer", which on visit 1 of a preload is staying (§10.13); outbound shipments → `DEPARTED`. Detention stops at the exit image *capture* time once the read lands, otherwise at the clerk's action (§3.6) |
-| `DECLARE_TAKE_LEG_CHANGE` | Visit `ON_SITE` or later, before `CHECK_OUT`; substitute trailer on site and not on another open leg; supervisor confirmation if the substitute carries freight (§5.1) | TAKE leg's `trailer_id` amended, or cleared for a bobtail departure. Original trailer stays on site with its shipments intact. Logged against both trailers |
+| `DECLARE_TAKE_LEG_CHANGE` | Visit `ON_SITE` or later, before `CHECK_OUT`; **no `OPEN` or `ACTIVE` session on the TAKE-leg trailer** — this is a departure declaration and the dock is still working; **the TAKE leg does not name the trailer the driver brought** — where both legs name one trailer there is nothing to substitute, and leaving it here is §10.15's conversion rather than an amendment. The action is for a self-service pickup (flows §7 P3, matrix §2.6); substitute trailer on site and not on another open leg; supervisor confirmation if the substitute carries freight (§5.1) | TAKE leg's `trailer_id` amended, or cleared for a bobtail departure. Original trailer stays on site with its shipments intact. Logged against both trailers |
 | `RESOLVE_IDENTIFICATION` | An identification pair in `MISMATCH`, or an `UNMATCHED` read; role permitted by facility config | Records which source was correct and who decided. May trigger `CORRECT_TRAILER_IDENTITY` or `MERGE_TRAILERS` (§5.5) if the wrong record was already used |
 | `TURN_AWAY` | `presence` is `AT_FACILITY`, `AT_GATE` or `ON_SITE` — anything but `OFF_SITE` and `DEPARTED` | Visit → `TURNED_AWAY`; reason code required; any held dock released |
 
@@ -1098,7 +1106,7 @@ Note what is deliberately *not* here: no requirement that a trailer be pre-regis
 | Action | Preconditions | Effects |
 |---|---|---|
 | `POSITION_TRAILER` | **Tractor attached**; visit `ON_SITE` or `AUTHORIZED_TO_DEPART`; `destination` is `DOCK_ASSIGNED` or `YARD_ASSIGNED` — **D** "Assign a dock or yard destination first" while `AWAITING_ASSIGNMENT`, since a driver with nowhere to go is blocked on a decision rather than on labour; no `OPEN`/`ACTIVE` session | Position → the reported placement. If a dock: DockStay opens and `DockAssignment → FULFILLED`, exactly as `COMPLETE_MOVE` does. Variance flag if ≠ `requested_destination`. **No MoveTask is created or closed** — none ever existed (§3.5). Once the visit is `AUTHORIZED_TO_DEPART` the destination may be the exit lane, giving `AT_GATE_OUT` |
-| `DROP_TRAILER` | Trailer at a dock or yard spot; tractor attached | Tractor detaches. Trailer becomes yard-team responsibility; move tasks become possible. If in the yard with no dock, `destination → AWAITING_ASSIGNMENT` (§3.5) |
+| `DROP_TRAILER` | Trailer at a dock or yard spot; tractor attached; **the visit is not `LIVE`** — a live load stays with its driver by definition, and leaving it behind is a conversion to a drop rather than a handoff (§10.15). Without this the action was offered to a live load's driver while his trailer was mid-unload at a dock | Tractor detaches. Trailer becomes yard-team responsibility; move tasks become possible. If in the yard with no dock, `destination → AWAITING_ASSIGNMENT` (§3.5) |
 | `HOOK_TRAILER` | Trailer on a TAKE leg; visit `ON_SITE`; no open MoveTask or `ACTIVE` session | Tractor attaches. Any pending move task for this trailer is cancelled — it no longer needs one |
 | `ASSIGN_DOCK` | `destination = AWAITING_ASSIGNMENT`; dock `FREE` or its hold expired. **Trailer need not be on site** (§2.13) | `DockAssignment` `HELD`; `destination → DOCK_ASSIGNED` |
 | `RELEASE_DOCK` | Assignment `HELD` | `RELEASED` with a reason — reassigned, no-show, dock out of service; `destination → AWAITING_ASSIGNMENT` |
@@ -1734,6 +1742,30 @@ The split is §3.5's own line, and it needs no new concept: **driver-side** step
 #### Recommendation
 
 Take the two primary slots — it is a presentation change, and it is the difference between a console that describes the yard and one that argues with it. The deeper question, whether `VisitLeg` should carry which track it belongs to, can wait for §10.13.
+
+---
+
+### 10.15 Nothing converts a live visit to a drop
+
+**Found by closing two holes at once.** `DROP_TRAILER` was available to a live load's driver, and `DECLARE_TAKE_LEG_CHANGE` let him clear the TAKE leg and leave bobtail from anywhere on site. Both were wrong where they stood — the first offered the yard-team handoff while the dock crew was inside his trailer, the second offered to amend a leg that names the trailer he arrived with. Closing them is correct and leaves a real operation with nothing to perform it.
+
+**Drivers decide not to wait.** A live unload runs long, the driver's clock runs out, and he asks to drop the trailer and go. It happens, and today it is handled by a phone call and somebody editing the appointment.
+
+The conversion is not one field. It is at least:
+
+| | |
+|---|---|
+| **Visit type** | `LIVE → DROP`, which changes what the appointment means for detention (§10.6) and for the carrier's billing |
+| **The TAKE leg** | Cleared, or repointed at another trailer. He came to leave with what he brought; now he leaves with nothing |
+| **The trailer** | Becomes yard-team responsibility mid-session — a `DockStay` that started as a live unload finishes without a driver attached |
+| **The session** | May be `ACTIVE`. Does it continue, or end and reopen? The freight does not care, but the record does |
+| **Who agrees** | The facility has to accept the trailer for longer than planned. This is not a driver's unilateral declaration |
+
+**Two candidate shapes.** Either a first-class `CONVERT_VISIT_TYPE` action with supervisor permission and a reason code, which makes the event explicit and auditable; or treat it as `DECLARE_TAKE_LEG_CHANGE` to bobtail *plus* an explicit drop, which reuses what exists and records the two halves separately at the cost of never naming the thing that happened.
+
+**Recommendation: the explicit action.** The conversion changes the commercial meaning of the appointment, and an event log that says `CONVERTED_LIVE_TO_DROP` with a reason answers the dispute three weeks later, which two unrelated entries do not. It is also the only version that can require agreement from the facility rather than assuming it.
+
+Until this is decided, the honest state is what the bench now does: the two actions are hidden on a live visit, with reasons that say the conversion is what is missing rather than pretending the operation cannot happen.
 
 ---
 
