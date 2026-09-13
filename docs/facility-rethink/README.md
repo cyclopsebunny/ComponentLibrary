@@ -66,10 +66,10 @@ Five things that, if lost, make the rest incoherent:
 
 | Document | Version | Size |
 |---|---|---|
-| yard-dock-operations-model.md | v0.26 | ~197 KB |
-| flows.md | v0.10 | ~27 KB |
+| yard-dock-operations-model.md | v0.27 | ~199 KB |
+| flows.md | v0.11 | ~30 KB |
 | action-availability-matrix.md | v0.19 | ~45 KB |
-| glossary.md | v0.13 | ~34 KB |
+| glossary.md | v0.14 | ~34 KB |
 
 **39 decisions resolved. 15 items open** (model §10). The model is decided enough to build.
 
@@ -97,7 +97,7 @@ every other that sealing needed freight aboard, and none of them asked *whose* f
 
 ### Known maintenance risks
 
-- **The model document is too large.** At ~197 KB it is past the size where a sequential edit can silently delete a section — this has already happened once. It should be split into domain model, decision log, and UI spec. The v0.21 round was edited by targeted replacement only, and §10 has grown since.
+- **The model document is too large.** At ~199 KB it is past the size where a sequential edit can silently delete a section — this has already happened once. It should be split into domain model, decision log, and UI spec. The v0.21 round was edited by targeted replacement only, and §10 has grown since.
 - **Four documents will drift.** Nothing enforces consistency. The glossary is designated the tiebreaker, which only works if it is the document people actually open.
 - ~~`CLEAR_VISIT` naming inconsistency~~ — **resolved in v0.20**: renamed `AUTHORIZE_DEPARTURE`. ~~`fill_declaration` wording~~ — **resolved in glossary v0.8**. Two naming items remain open in glossary §11.
 

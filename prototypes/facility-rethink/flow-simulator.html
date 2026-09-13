@@ -461,7 +461,7 @@ dialog footer{padding:11px 15px; border-top:1px solid var(--line); display:flex;
 <header class="top">
   <span class="brand">
     <b>Yard Flow Bench</b>
-    <span>Walks the yard &amp; dock document set against itself — model v0.26 · flows v0.10 · matrix v0.19 · glossary v0.13</span>
+    <span>Walks the yard &amp; dock document set against itself — model v0.27 · flows v0.11 · matrix v0.19 · glossary v0.14</span>
   </span>
   <span class="topctl">
     <button class="mini" id="cfgbtn" type="button">Facility config</button>
@@ -912,6 +912,27 @@ function syncStays(w){
         "“gate-in to gate-out”, which does not describe this. Finding F13.");
     } else if (!here && open){
       open.closed_at = w.clock;
+    }
+    /* The DockStay is synced from position for the same reason the TrailerStay
+       is: so no action can forget. It was forgotten. Nothing closed the span
+       when a trailer left a dock other than START_MOVE, so on an inbound live
+       load — where the driver takes it off himself and then checks out — the
+       DockStay never ended, and the history drew it running past the visit
+       that contains it. releasePosition() frees the dock without touching the
+       span, which is exactly the kind of omission a per-action write invites.
+       Finding F25. */
+    const atDock = t.position==="DOCK";
+    const dOpen = w.dockStays.find(x => x.trailer_id===t.id && x.pulled_at==null);
+    if (!atDock && dOpen){
+      dOpen.pulled_at = w.clock;
+      t.stay = null;
+    } else if (atDock && !dOpen){
+      /* A backstop, and a loud one: reaching a dock without a span means an
+         action placed the trailer and skipped openDockStay. */
+      openDockStay(w, t);
+      log("dev","<b>DockStay opened by the position sync</b> for "+t.number+
+        " — whatever put it on dock "+t.dock+" did not open one. The span is the "+
+        "record (§10.12), so it is opened here rather than lost.");
     }
   });
 }
@@ -3096,8 +3117,26 @@ const SCENARIOS = [
         return o; }),
     st("P5a","P5","AUTHORIZE_DEPARTURE","Clerk","Departure authorized.","flows §3 P5a",
       w => w.visits.V1.presence==="AUTHORIZED_TO_DEPART" ? [] : ["presence should be AUTHORIZED_TO_DEPART"]),
-    st("P5b","P5","CHECK_OUT","Gate","Driver pulls off the dock and leaves.","flows §3 P5b",
-      w => w.visits.V1.presence==="DEPARTED" ? [] : ["presence should be DEPARTED"]),
+    /* flows §3 folded two events into P5b — "driver pulls off the dock and
+       leaves" — and they belong to two different spans. The DockStay ends when
+       he pulls off; the Visit ends at the gate. Written as one step, the dock
+       stay could only end when the visit did. Finding F25. */
+    st("P5a2","P5","POSITION_TRAILER","Driver","Pulls off the dock and takes it to the exit lane. **The DockStay ends here** — the visit does not.","flows §3 P5a′ · model §5.2",
+      w => { const t=w.trailers[bringLeg(w,w.visits.V1).trailer_id], o=[];
+        if (t.position!=="AT_GATE_OUT") o.push("trailer should be at AT_GATE_OUT");
+        const d=w.dockStays.find(x=>x.trailer_id===t.id);
+        if (!d || d.pulled_at==null) o.push("the DockStay should have closed");
+        if (w.visits.V1.departed_at!=null) o.push("the visit should still be open");
+        if (w.docks["27"] && w.docks["27"].state!=="FREE") o.push("dock 27 should be free again");
+        return o; }),
+    st("P5b","P5","CHECK_OUT","Gate","Checks out at the gate. **The visit ends here**, after the dock stay it contains.","flows §3 P5b",
+      w => { const v=w.visits.V1, o=[];
+        if (v.presence!=="DEPARTED") o.push("presence should be DEPARTED");
+        const t=w.trailers[bringLeg(w,v).trailer_id];
+        const d=w.dockStays.find(x=>x.trailer_id===t.id);
+        if (d && v.departed_at!=null && d.pulled_at>=v.departed_at)
+          o.push("the dock stay must end before the visit that contains it");
+        return o; }),
     st("P6","P6","@EXIT_READ","System","Exit read lands minutes later; departure time backfills from the capture timestamp.","flows §3 P6")
   ]
 },
@@ -3141,7 +3180,14 @@ const SCENARIOS = [
     st("P4d2","P4","SEAL_TRAILER","Dock lead","Sealed; shipments STAGED.","flows §4 P4d",
       w => w.shipments["SHP-2001"].status==="STAGED" ? [] : ["shipments should be STAGED"]),
     st("P5a","P5","AUTHORIZE_DEPARTURE","Clerk","Authorized.","flows §4 P5a"),
-    st("P5b","P5","CHECK_OUT","Gate","Departs loaded.","flows §4"),
+    st("P5a2","P5","POSITION_TRAILER","Driver","Pulls the loaded trailer off the dock and takes it to the exit lane. **The DockStay ends here.**","flows §4 P5a′ · model §5.2",
+      w => { const t=w.trailers[bringLeg(w,w.visits.V1).trailer_id], o=[];
+        if (t.position!=="AT_GATE_OUT") o.push("trailer should be at AT_GATE_OUT");
+        const d=w.dockStays.find(x=>x.trailer_id===t.id);
+        if (!d || d.pulled_at==null) o.push("the DockStay should have closed");
+        if (w.visits.V1.departed_at!=null) o.push("the visit should still be open");
+        return o; }),
+    st("P5b","P5","CHECK_OUT","Gate","Departs loaded — the visit ends after the dock stay inside it.","flows §4"),
     st("P6","P6","@EXIT_READ","System","Exit read confirms the trailer.","flows §4")
   ]
 },
@@ -3815,7 +3861,11 @@ const SEEDED = [
 
 {id:"F24", sev:"gap", title:"Sealing was keyed on freight aboard without asking whose freight",
  body:"<b>Reported from operations, and it closes F21's one open residue.</b> A dock worker cannot seal a trailer on an inbound load: you would not seal one before it is loaded, and there is no reason to seal one that has been unloaded or was always empty. They <i>could</i> unseal one.<br><br>The precondition was <b>“≥1 <span class=\"id\">ON_BOARD</span> row”</b> (model §5.4), which satisfied all three of those cases at once, because an inbound trailer's rows begin at <span class=\"id\">ON_BOARD</span> (glossary §5.2). Sealing was offered on the apron, before the trailer had been unloaded, and again afterwards while residual freight stayed aboard. The fix is the same test the fill declaration now uses — <b>an outbound row already <span class=\"id\">ON_BOARD</span></b> — and it covers all three cases in one condition, since outbound rows only reach <span class=\"id\">ON_BOARD</span> at <span class=\"id\">END_SESSION</span>.<br><br><b>The asymmetry with <span class=\"id\">BREAK_SEAL</span> is the point.</b> Breaking a seal needs only a seal: an inbound trailer arrives sealed and breaking it is the first thing receiving does. So the pair is deliberately lopsided, and the documents should say so rather than leave a reader to infer symmetry from the names.<br><br>Two things this tidies. Sealing's fill requirement is <b>unconditional again</b> — F21 had scoped it to outbound only to avoid pointing at a declaration that was unavailable, and with sealing itself scoped there is always a load to declare. And it retires an inconsistency that had been sitting in plain sight: <span class=\"id\">AUTHORIZE_DEPARTURE</span> and <span class=\"id\">READY_TO_DEPART</span> both tested freight <i>direction</i>, and the two actions that produce what they check did not.<br><br><b>This one could not have come from the bench.</b> Nothing contradicted anything — every table agreed with every other that sealing needed freight aboard. Like the outbound preload and the parallel board, it had to come from someone who has watched it happen.",
- refs:"model §5.4 · model §3.2 · model §9 #39 · matrix §1.1 · matrix §2.3 · matrix §2.5 · matrix §2.6 · glossary §5.2 · glossary §7"}
+ refs:"model §5.4 · model §3.2 · model §9 #39 · matrix §1.1 · matrix §2.3 · matrix §2.5 · matrix §2.6 · glossary §5.2 · glossary §7"},
+
+{id:"F25", sev:"blocks", title:"A live load's dock stay had no closing event, so it outlasted the visit containing it",
+ body:"<b>Reported from the history of an inbound live load: the dock stay was drawn lasting longer than the visit.</b> It should be the other way round — the driver pulls off the dock and <i>then</i> checks out at the gate, so the visit contains the dock stay.<br><br><b>The span had nowhere to close.</b> Model §5 names two ways a trailer leaves a dock, <span class=\"id\">START_MOVE</span> and <span class=\"id\">PULL_FROM_DOCK</span>, and both assume it is being handed to the yard team. A live load is the one flow where nobody hands it over: the driver keeps it from gate to gate. So on flows 1 and 2 nothing ever set <span class=\"id\">pulled_at</span>, and the history drew an open-ended bar running past the visit that contained it. In the engine <span class=\"id\">releasePosition()</span> frees the dock without touching the span — exactly the omission a per-action write invites.<br><br><b>And the flow folded two events into one step.</b> flows §3 P5b read “driver pulls off the dock and leaves”. Those are two events belonging to two different spans — the DockStay ends at the first, the Visit at the second — and on a live load they are the <i>only</i> two that can end them. Written as one step the dock stay could not end before the visit even in principle. §4 was worse: its table stopped at authorization and had no P5b at all.<br><br>Fixed three ways. The <b>DockStay is now synced from position</b> like the TrailerStay, so no action can forget it — with a loud dev note if a trailer reaches a dock without one, since that means an action skipped the open. <b>flows §3 and §4 gain P5a′</b>, the pull-off, and §2.6 states <span class=\"id\">pulled_at</span> as a property of the span rather than an effect of particular actions, which is how it went wrong. <span class=\"id\">CHECK_OUT</span> explicitly does <i>not</i> close a stay — the tempting fix, and it would both hide the missing event and record the pull-out at the wrong minute.<br><br><b>The containment is now a test the History panel runs.</b> On a live visit it reads the two spans and says which contains which; where it fails it says so, naming this finding. On a drop there is no such relationship — the dock stay can fall entirely after the visit ends, which is §10.12's whole point.",
+ refs:"model §2.6 · model §5.1 · model §5.2 · model §10.12 · flows §3 P5 · flows §4 P5 · glossary §3"}
 ];
 const SEV = {
   blocks:{l:"Blocks a flow", t:"r"}, contradiction:{l:"Documents disagree", t:"r"},
@@ -3847,6 +3897,7 @@ const APPLIED = {
   F20:"matrix v0.16 §1.8 · glossary v0.10 §4.1 and §8 · flows v0.9 §12 — ownership is now specified as a set, with the four shared actions named",
   F22:"model v0.25 §5.1, §5.2 and §10.15 · matrix v0.18 §2.6 and §4 · glossary v0.12 §7 · flows v0.10 §10 — both actions are now scoped; the conversion they were standing in for is open item §10.15 for you to decide",
   F23:"matrix v0.18 §2 note · flows v0.10 §7 — stated as a gap with the two candidate shapes; undecided, and §1.7's meaning depends on which you take",
+  F25:"model v0.27 §2.6, §5.1 and §5.2 · flows v0.11 §3 and §4 · glossary v0.14 §3 — the span now closes from position, the pull-off is its own step, and the containment is checked in the History panel",
   F24:"model v0.26 §5.4, §3.2 and §9 #39 · matrix v0.19 §1.1, §2.3, §2.5 and §2.6 · glossary v0.13 §7 — decided, and recorded as a resolved decision rather than a finding against the text",
   F21:"model v0.24 §3.2, §5.3, §5.4 and the §5 note · matrix v0.17 §1.1, §2.1, §2.3 and §2.5 · glossary v0.11 §5.1 and §7 — the declaration is scoped to an outbound load and §5 now says every action needs its position precondition; whether sealing should be offered on an inbound trailer at all is left open"
 };
@@ -4539,6 +4590,29 @@ function nestingFacts(w){
     if (ds.length>1) out.push("Trailer stay <b>"+s.id+"</b> contains <b>"+ds.length+
       "</b> dock stays.");
   });
+  /* On a LIVE visit the driver is with the trailer from gate to gate, so a dock
+     stay of his is strictly inside the visit: he cannot reach the exit lane
+     without pulling off first. The claim is read off the spans rather than
+     asserted, and stated as a violation when it fails — which is how the
+     unclosed DockStay of F25 would have reported itself. */
+  Object.values(w.visits).filter(v => v.visit_type==="LIVE" && v.arrived_at!=null)
+    .forEach(v => {
+      w.dockStays.filter(d => v.legs.some(l => l.trailer_id===d.trailer_id) &&
+          d.spotted_at>=v.arrived_at &&
+          (v.departed_at==null || d.spotted_at<=v.departed_at))
+        .forEach(d => {
+          if (v.departed_at==null) return;
+          if (d.pulled_at!=null && d.pulled_at < v.departed_at)
+            out.push("Dock stay <b>"+d.id+"</b> ("+(d.pulled_at-d.spotted_at)+" min) sits "+
+              "inside live visit <b>"+v.id+"</b> ("+(v.departed_at-v.arrived_at)+" min) — "+
+              "the driver pulled off the dock before checking out, so the visit is the "+
+              "longer span.");
+          else
+            out.push("<b>Dock stay "+d.id+" outlasts the live visit "+v.id+
+              " that contains it</b> — the driver checked out, so something took the trailer "+
+              "off this dock without closing the stay (model §2.6, finding F25).");
+        });
+    });
   Object.values(w.visits).forEach(v => {
     const n = v.visit_log.length + (v.arrived_at!=null && v.departed_at==null ? 1 : 0);
     if (n > 1) out.push("Appointment <b>"+v.id+"</b> was attended <b>"+n+

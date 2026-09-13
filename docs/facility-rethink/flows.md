@@ -1,8 +1,14 @@
 # Operational Flows — States, Flags, and Actions by Step
 
 **Companion to:** `yard-dock-operations-model.md` v0.23, `action-availability-matrix.md` v0.15, `glossary.md` v0.9
-**Status:** Draft v0.10 — two trailers, one screen
+**Status:** Draft v0.11 — pulling off the dock is its own step
 **Purpose:** Walk each appointment type from start to finish, showing at every step which states change, which flags can appear, which actions are available, and who acts.
+
+### Changes from v0.10
+Reported from the history of an inbound live load: the dock stay was drawn lasting longer than the visit containing it.
+- **§3 P5b split into P5a′ and P5b.** "Driver pulls off the dock and leaves" folded two events belonging to two different spans into one step: the DockStay ends when he pulls off, the Visit ends at the gate. Written as one, the dock stay could only ever end when the visit did.
+- **§4 gains the same P5a′, and a P5b it never had** — the flow 2 table stopped at authorization.
+- **§3 and §4 note:** on a live load the dock stay is strictly inside the visit, and that containment is a test a history screen should pass (model §2.6).
 
 ### Changes from v0.9
 - **§7 note:** after P3b the driver's next step is on the *other* trailer, and nothing says how a screen follows that. A trailer-scoped surface does not offer P3c at all (matrix §2 note).
@@ -95,8 +101,11 @@ Trailer arrives loaded, unloads at a dock with the driver waiting, departs empty
 | **P4b** Unloading | Session `ACTIVE`; rows → `UNLOADING`; load state `IN_WORK` | `DETENTION_RISK` | `END_SESSION`, `CANCEL_SESSION` (`D`, supervisor) | Dock crew |
 | **P4c** Session ended, **outcome per shipment** | Rows closed; shipments → `RECEIVED`; load state `EMPTY`; `empty_verification → VERIFIED_EMPTY` | `PARTIAL_RECEIPT` if LTL freight stays aboard; `UNEXPECTED_RESIDUAL` | `END_SESSION` | Dock lead |
 | **P5a** Departure authorized | presence → `AUTHORIZED_TO_DEPART` | `READY_TO_DEPART` | `AUTHORIZE_DEPARTURE`, `DECLARE_TAKE_LEG_CHANGE` | Clerk |
-| **P5b** Driver pulls off the dock and leaves | position → `OFF_SITE`; presence → `DEPARTED` | — | `CHECK_OUT` | Gate |
+| **P5a′** Driver pulls off the dock and drives to the exit lane | position → `AT_GATE_OUT`; **DockStay closes** (`pulled_at`); dock → `FREE` | `AT_DESTINATION` clears | `POSITION_TRAILER` → the exit lane | Driver |
+| **P5b** Driver checks out at the gate | position → `OFF_SITE`; presence → `DEPARTED`; **Visit closes** | — | `CHECK_OUT` | Gate |
 | **P6** Exit read lands minutes later | Departure time backfilled from image capture | `UNDECLARED_TRAILER_EXIT` → recovery | `RESOLVE_IDENTIFICATION`, `CORRECT_DEPARTURE` | System / supervisor |
+
+**Why P5a′ is its own step.** It was folded into P5b, and the two events belong to two different spans: the **DockStay** ends when he pulls off, the **Visit** ends at the gate. On a live load these are the only two events that can end them, so written as one step the dock stay could not end before the visit — and a history screen then draws a dock stay outlasting the visit that contains it. On a live load the containment is strict, and it is a useful test of any such screen: the driver is with the trailer from gate to gate, so he cannot reach the exit without pulling off first (model §2.6). On a **drop** no such relationship holds — see §5, where the dock stay happens hours after the visit ends.
 
 **Note on P4c:** this is the LTL case. If only some shipments are consigned here, the rest stay `ON_BOARD` and must appear on the TAKE leg's `expected_residual_shipment_ids`, or `AUTHORIZE_DEPARTURE` blocks at P5a.
 
@@ -117,8 +126,12 @@ Identical to Flow 1 through P2. Differences:
 | **P4c** Session ended with **an outcome each** | Per shipment: `ON_BOARD` / back to `ASSIGNED` / `PART_LOADED` | `PART_LOAD_HELD` | `END_SESSION` | Dock lead |
 | **P4d** Fill declared, then sealed | `fill_declaration → COMPLETE`; shipments → `STAGED` | Blocked if `PART_LOAD_HELD` | `DECLARE_FILL_COMPLETE`, `REOPEN_FILL`, `SEAL_TRAILER` | Dock lead (role-gated) |
 | **P5a** Authorized | presence → `AUTHORIZED_TO_DEPART` | `READY_TO_DEPART` | `AUTHORIZE_DEPARTURE` | Clerk |
+| **P5a′** Driver pulls the loaded trailer off the dock and drives to the exit lane | position → `AT_GATE_OUT`; **DockStay closes**; dock → `FREE` | — | `POSITION_TRAILER` → the exit lane | Driver |
+| **P5b** Checks out at the gate | position → `OFF_SITE`; presence → `DEPARTED`; **Visit closes** | — | `CHECK_OUT` | Gate |
 
 **The order P4c → P4d → P5a is not optional.** Fill complete gates sealing; sealing gates departure authorization; a `PART_LOADED` row blocks all three.
+
+**P5a′ is the same step §3 gains**, and for the same reason: it is what ends the DockStay on a live load, and nothing else does (model §2.6, §5.2).
 
 ---
 

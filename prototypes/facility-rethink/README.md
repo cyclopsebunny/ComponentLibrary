@@ -62,9 +62,11 @@ by running it:
   what §6.1 claimed all along.
 - **`holder_type` is tested everywhere**, never merely "is custody open". A road tractor holding
   the trailer suppresses move-task creation; a yard truck holding it *is* the move.
-- **`TrailerStay`** is synced from position rather than written per action, so no action can
-  forget to open or close one.
-- **`DockStay`** is now a recorded span, not just a field on the trailer.
+- **`TrailerStay` and `DockStay` are both synced from position** rather than written per action,
+  so no action can forget to open or close one. The DockStay was written per action, and it was
+  forgotten: model §5 names `START_MOVE` and `PULL_FROM_DOCK` as the ways a trailer leaves a
+  dock, and both assume a handoff to the yard team — on a live load the driver pulls off himself,
+  so the span never closed and the history drew it outlasting the visit that contained it (F25).
 - **`Visit`** spans sit inside the appointment, each with its own registration, dockpass and
   detention clock (§10.13) — the only pair in the set that nests cleanly.
 - **Every event is stamped** with its actor and with the id of each span it falls inside, captured
@@ -72,7 +74,9 @@ by running it:
 
 The **History panel** renders all five bracketings on one time axis and lets you switch which one
 divides the event list. The overlap claims under the timeline are read off the spans, not
-asserted — and the "inside no appointment" bucket is where the work that happens after the driver
+asserted — including the one that turns into a test: on a live visit the dock stay is strictly
+inside the visit, because the driver cannot reach the exit lane without pulling off the dock
+first, and the panel says so when it holds and names the missing event when it does not — and the "inside no appointment" bucket is where the work that happens after the driver
 goes home actually lands.
 
 Two scenarios sit in that group:
@@ -86,10 +90,10 @@ Two scenarios sit in that group:
 
 ## Findings
 
-Twenty-four findings are built in — places where the four documents could not all be implemented
-at once, plus eight things they did not know about. Twenty-two have been applied back to the
-documents in `../../docs/facility-rethink/` — model v0.26, matrix v0.19, flows v0.10,
-glossary v0.13 — and the rail marks which. Seven things are still open there:
+Twenty-five findings are built in — places where the four documents could not all be implemented
+at once, plus eight things they did not know about. Twenty-three have been applied back to the
+documents in `../../docs/facility-rethink/` — model v0.27, matrix v0.19, flows v0.11,
+glossary v0.14 — and the rail marks which. Seven things are still open there:
 
 - **Nothing converts a live visit to a drop (F22, model §10.15).** Drivers decide not to wait;
   the catalog has no action for it, and the two that were standing in for it — the yard-team
@@ -140,7 +144,7 @@ you are standing — they keep the scenario, the step and the state with them.
 
 ## Source documents
 
-Built against `yard-dock-operations-model.md` v0.26, `flows.md` v0.10,
-`action-availability-matrix.md` v0.19 and `glossary.md` v0.13, which live beside this bench in
+Built against `yard-dock-operations-model.md` v0.27, `flows.md` v0.11,
+`action-availability-matrix.md` v0.19 and `glossary.md` v0.14, which live beside this bench in
 `../../docs/facility-rethink/`. Every section reference in the page points into them, and the
 two should be changed together — that is the whole arrangement.

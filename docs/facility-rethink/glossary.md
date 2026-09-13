@@ -1,8 +1,11 @@
 # Glossary — Canonical Terms
 
-**Companion to:** `yard-dock-operations-model.md` v0.26, `action-availability-matrix.md` v0.19
-**Status:** Draft v0.13 — sealing is for a load going out
+**Companion to:** `yard-dock-operations-model.md` v0.27, `action-availability-matrix.md` v0.19
+**Status:** Draft v0.14 — spot-in to pull-out, whatever pulls it out
 **Purpose:** The single source of truth for every entity, state, action, flag, and label. When this document and another disagree, this one is wrong and should be corrected — but until it is, it is what the product, the training material, and support should say.
+
+### Changes from v0.13
+- **`DockStay` entry** (§3): `pulled_at` is set by the trailer leaving the dock, whatever takes it off — including the driver of a live load pulling off himself, which no action's effects had covered (model §2.6).
 
 ### Changes from v0.12
 - **`SEAL_TRAILER` and `BREAK_SEAL` entries** (§7): sealing needs an outbound load aboard; breaking a seal needs only a seal. The pair is deliberately asymmetric (model §9 #39).
@@ -129,7 +132,7 @@ Names that appeared in earlier drafts and no longer exist. Listed so old notes r
 | **VisitLeg** | One half of a visit: `BRING` (trailer arrives) or `TAKE` (trailer departs). Each names its own trailer |
 | **Dockpass** | A single-use 5-digit reference to an appointment, issued at registration, redeemed at the gate |
 | **DockAssignment** | A dock held for a visit. May precede admission; released on spot-in, reassignment, or no-show |
-| **DockStay** | One continuous occupancy of a dock by one trailer, spot-in to pull-out. Contains 1..n sessions |
+| **DockStay** | One continuous occupancy of a dock by one trailer, spot-in to pull-out. Contains 1..n sessions. **Pull-out is whatever takes the trailer off the dock** — a move starting, or on a live load the driver pulling off to the exit lane, which is the only thing that ends it there (model §2.6). Not check-out: by then the trailer is already off the dock |
 | **DockSession** | One work activity at a dock, covering one or more shipments in the same direction |
 | **SessionShipment** | A shipment's membership in a session, with `joined_at` and its end-of-session `outcome` |
 | **MoveTask** | A requested relocation. **Exists only for trailers with no tractor attached** |
