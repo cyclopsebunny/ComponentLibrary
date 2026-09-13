@@ -1,8 +1,15 @@
 # Action Availability Matrix
 
-**Companion to:** `yard-dock-operations-model.md` v0.23
-**Status:** Draft v0.16 — an action can be owned by more than one role
+**Companion to:** `yard-dock-operations-model.md` v0.24
+**Status:** Draft v0.17 — freight aboard is not the same as a load put on here
 **Purpose:** For any trailer in any state, define which actions appear, which appear disabled, which are hidden, and what the user is told — so a screen can be built without re-deriving preconditions from the action catalog.
+
+### Changes from v0.16
+Reported: on an inbound live load the fill declaration was offered before the visit was even admitted.
+- **§2.3 and §2.5:** `DECLARE_FILL_COMPLETE` is keyed on an **outbound** load aboard, not on "freight aboard". Inbound rows begin `ON_BOARD` (model §2.7), so the old condition was true of every loaded inbound trailer — including one still outside the fence, which §2.1 does not list the action for at all.
+- **§2.5:** the `No session` column for `DECLARE_FILL_COMPLETE` and `SEAL_TRAILER` is the **multi-session** case, and now says so. With nothing yet loaded there is nothing to declare.
+- **§2.1 note added:** what this document leaves *out* of a position's table is load-bearing, and nothing enforces it — model §5 has no position preconditions to read (model §5 note).
+- **§2.3:** `SEAL_TRAILER`'s fill requirement applies only where an outbound load is aboard.
 
 ### Changes from v0.15
 Reported: where two or more people can take the same action, one column per person shows it twice and implies a choice that does not exist.
@@ -88,8 +95,9 @@ Worked examples, since the rule is a judgment and examples are how it gets appli
 | Action | Blocking condition | Clearing action | Treatment |
 |---|---|---|---|
 | `PULL_FROM_DOCK` | Session `OPEN` | `END_SESSION` / `CANCEL_SESSION` — right here | Disabled + reason |
-| `SEAL_TRAILER` | Fill `OPEN` | `DECLARE_FILL_COMPLETE` — right here | Disabled + reason |
+| `SEAL_TRAILER` | Fill `OPEN`, **outbound load aboard** | `DECLARE_FILL_COMPLETE` — right here | Disabled + reason |
 | `SEAL_TRAILER` | No freight aboard | Nothing. An empty trailer is not a sealing candidate | Hidden |
+| `DECLARE_FILL_COMPLETE` | No outbound load aboard | Nothing anyone can do to this trailer. Freight that arrived aboard is not a load this facility put on | Hidden |
 | `ASSIGN_SHIPMENT` | Fill `COMPLETE` | `REOPEN_FILL` — right here | Disabled + reason |
 | `ASSIGN_SHIPMENT` | Trailer out of service | `RETURN_TO_SERVICE` — right here | Disabled + reason |
 | `ASSIGN_SHIPMENT` | **Trailer holds inbound freight** | Move to a dock and unload an entire inbound load | **Hidden** |
@@ -221,6 +229,8 @@ A single column cannot express these contexts, because presence and destination 
 | `CREATE_MOVE_TASK` | **H** | **D** "Admit the visit first" | **D** "Admit the visit first" | **A** |
 | `ASSIGN_SHIPMENT` | **H** "Trailer is not on site" | **H** — at the facility but not through the gate (§9 #2) | **H** | per §2.2 |
 
+**What this table leaves out is load-bearing, and nothing enforces it.** §2 is keyed on position, so an action's absence from a position's table is this document's way of saying "not available there" — it is the *only* place that is said. Model §5 carries a position precondition on one action out of forty (`ASSIGN_SHIPMENT`, `position ≠ OFF_SITE`), so anything built from the catalog alone offers dock actions on trailers that are not here: the fill declaration and then sealing were both offered on a loaded inbound trailer that had scanned the QR sign and was standing outside the fence. The fix belongs in model §5, not here — every action needs its position precondition written in.
+
 **`OFF_SITE` is nearly empty, and that is correct.** Nothing can be done to a visit that has not announced itself — and it cannot announce itself remotely (§9 #31). A trailer record that departed previously still exists, so it can be bound to a future leg or marked out of service, but not assigned freight.
 
 **`AT_FACILITY` is the genuinely new column.** The driver has scanned in and is standing outside the fence: they can hold a dock, be reassigned, or be turned away, all before the gate opens. Everything physical stays blocked, and `CREATE_MOVE_TASK` is **D** rather than **H** because "Admit the visit first" names a real next step (§1.1) — and one that is minutes away, not hypothetical.
@@ -254,17 +264,18 @@ This is the section v0.2 got wrong. Treatment is listed per condition.
 | | Holds inbound freight | **H** | *(nothing shown — see §1.1)* |
 | `UNASSIGN_SHIPMENT` | ≥1 `ASSIGNED` row | **A** | — |
 | | All rows loading or loaded | **H** | Nothing is unassignable; not a candidate |
-| `DECLARE_FILL_COMPLETE` | Freight aboard, no `PART_LOADED` | **A** | — |
+| `DECLARE_FILL_COMPLETE` | **Outbound** load aboard, no `PART_LOADED` | **A** | — |
 | | `PART_LOADED` row exists | **D** | "Resolve the part-loaded shipment first" |
 | | Role not permitted | **D** | "Not permitted for your role" |
-| | No freight aboard | **H** | Not a candidate |
+| | No outbound load aboard | **H** | Nothing has been loaded here; not a candidate. **Not "no freight aboard"** — an inbound trailer's rows begin `ON_BOARD` (model §2.7), so the loose reading offered the declaration on every loaded inbound trailer, at the gate and in the yard alike |
 | `REOPEN_FILL` | Fill `COMPLETE`, unsealed | **A** | — |
 | | Sealed | **D** | "Break the seal first" |
 | | Fill already `OPEN` | **H** | Nothing to reopen |
-| `SEAL_TRAILER` | Fill `COMPLETE`, freight aboard | **A** | — |
-| | Fill `OPEN` | **D** | "Declare fill complete first" |
+| `SEAL_TRAILER` | Freight aboard; fill `COMPLETE` **if any of it is an outbound load** | **A** | — |
+| | Fill `OPEN` **and an outbound load aboard** | **D** | "The load has not been declared complete" |
 | | `PART_LOADED` row exists | **D** | "Resolve the part-loaded shipment first" |
 | | No freight aboard | **H** | Not a candidate |
+| | Trailer not on site | **H** | Sealing is a physical act. Nothing in model §5 said so |
 | `BREAK_SEAL` | Sealed | **A** | Reason code required |
 | | Not sealed | **H** | Nothing to break |
 | `CREATE_MOVE_TASK` | No open move | **A** | — |
@@ -301,8 +312,8 @@ The busiest context, and where a single "trailer status" field would fail hardes
 | `CANCEL_SESSION` | **H** | **A** | **D**/**A** supervisor (§9 #14) | **H** |
 | `ASSIGN_SHIPMENT` | **A** | **A** | **A** if fill `OPEN` | **A** |
 | `UNASSIGN_SHIPMENT` | **A** if any `ASSIGNED` | **A** if not in session | **H** | **A** if any `ASSIGNED` |
-| `DECLARE_FILL_COMPLETE` | **A** | **D** "End or cancel the open session first" | **D** "Work is in progress at the dock" | **A** |
-| `SEAL_TRAILER` | **A**/**D** | **D** session open | **D** session active | **A**/**D** needs fill complete |
+| `DECLARE_FILL_COMPLETE` | **A** *if an outbound load is already aboard from an earlier session* — otherwise **H**, nothing has been loaded yet | **D** "End or cancel the open session first" | **D** "Work is in progress at the dock" | **A** |
+| `SEAL_TRAILER` | **A**/**D** — same multi-session proviso | **D** session open | **D** session active | **A**/**D** needs fill complete |
 | `PULL_FROM_DOCK` | **A** | **D** "End or cancel the open session first" | **D** "Work is in progress at the dock" | **A** |
 | `CREATE_MOVE_TASK` | **A** | **D** same reason | **D** same reason | **A** |
 | `CORRECT_TRAILER_IDENTITY` | **A** supervisor | **A** supervisor | **D** "Cannot renumber during active work" | **A** supervisor |
@@ -311,6 +322,8 @@ The busiest context, and where a single "trailer status" field would fail hardes
 Note how many dock-context blocks are **D** rather than **H**: at a dock, the clearing action is almost always right there, which is exactly when a disabled control earns its place. Contrast §2.3, where most blocks are structural and hidden.
 
 The `ENDED → OPEN` column is the sequential-session case: unload, end, assign, load again at the same dock — and multi-shipment outbound loading across several sessions in one stay.
+
+**The `No session` column is that same case seen from the other side.** A trailer at a dock with no session and nothing loaded has nothing to declare complete and nothing to seal — outbound rows do not reach `ON_BOARD` until `END_SESSION`. So those two cells are **A** only for a trailer that already carries a load from an earlier session, which is why the declaration cannot be made before the dock session has run.
 
 ### 2.6 `AT_GATE_OUT`
 

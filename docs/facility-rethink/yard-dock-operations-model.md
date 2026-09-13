@@ -1,7 +1,15 @@
 # Yard, Dock & Appointment Operations — Domain Model and UI Specification
 
-**Status:** Draft v0.23 — freight matching in both directions; the two tracks after a drop
+**Status:** Draft v0.24 — the fill declaration is about an outbound load, and where is a precondition
 **Purpose:** Define the entities, independent state dimensions, actions, derived work queues, and trailer-card display rules needed to manage trailers, shipments, and appointments at a distribution facility.
+
+### Changes from v0.23
+
+Reported: on an inbound live load the dock lead could declare the load complete as soon as the driver had registered — before the visit was admitted, let alone docked.
+
+- **`DECLARE_FILL_COMPLETE` requires an `ON_BOARD` *outbound* row** (§5.3, §3.2). The stated precondition was "≥1 `ON_BOARD` row", and an inbound trailer's rows **begin** at `ON_BOARD` (§2.7), so a loaded inbound trailer satisfied it from outside the fence. The declaration is about a load this facility put on; outbound rows only reach `ON_BOARD` at `END_SESSION`, so this also makes it unavailable before the dock session has run.
+- **`SEAL_TRAILER` requires the trailer to be on site**, and its fill requirement is **scoped to outbound freight aboard** (§5.4, §3.2) — as `AUTHORIZE_DEPARTURE` and `READY_TO_DEPART` already were. A trailer leaving with inbound freight it arrived with has no load for anyone to declare complete, so requiring the declaration there was a dead end.
+- **§5 note added: *where* is a precondition.** Matrix §2 is keyed by position, so an action's absence from a position's table means "not available there" — but §5 carried a position precondition on exactly one action, so nothing else could be enforced from the catalog. Any implementation reading §5 alone will offer dock actions on trailers that are not here.
 
 ### Changes from v0.22
 
@@ -724,9 +732,13 @@ With one shipment per trailer, loaded meant full. With several, it doesn't, and 
 
 This document takes the declaration. It is cheaper, it is honest about where the knowledge actually lives, and sealing already requires a human decision. Consequences:
 
-- `SEAL_TRAILER` requires `fill_declaration = COMPLETE`.
-- `AUTHORIZE_DEPARTURE` for a TAKE leg carrying freight requires `COMPLETE`.
+- `SEAL_TRAILER` requires `fill_declaration = COMPLETE` **when an outbound load is aboard**.
+- `AUTHORIZE_DEPARTURE` for a TAKE leg carrying **outbound** freight requires `COMPLETE`.
 - A trailer with freight and `fill_declaration = OPEN` is a trailer still accepting shipments — a real and useful state, and one that should be visible in the dock work queue as available capacity.
+
+**The declaration is about an outbound load, and only about an outbound load.** This is easy to lose, because the dimension is on the trailer rather than on the load and reads as though it described the trailer's fullness in general. It does not: "no more freight is going on" is a statement about freight *this facility is putting on*, and it exists solely to gate sealing and departure for such a load.
+
+The consequence for the precondition is not cosmetic. Written as "≥1 `ON_BOARD` row", it is satisfied by every loaded **inbound** trailer, because inbound rows begin at `ON_BOARD` — the freight is already aboard when the trailer arrives (§2.7). A dock lead could therefore declare the load complete on a trailer that had only registered at the QR sign and was still outside the fence. The test is **≥1 `ON_BOARD` row whose direction is `OUTBOUND`**, and it has a useful side effect: outbound rows only reach `ON_BOARD` at `END_SESSION`, so there is nothing to declare until the dock session has actually run.
 
 If you later want capacity modelling, it becomes an *advisory warning* against the declaration rather than a replacement for it. Do not build it first.
 
@@ -983,6 +995,8 @@ Patterns 5/6 and pattern 7 are *both* supported — only possible because traile
 
 Each action lists preconditions and effects. This table is the contract: the UI should enable exactly the actions whose preconditions are met, and the event log should record exactly these action names.
 
+**`position` is a precondition, and this catalog mostly omits it.** Matrix §2 is keyed by position, so an action's absence from a position's table is a statement — "not available there" — and it is the only place that statement is made. But §5 names a position precondition on exactly one action (`ASSIGN_SHIPMENT`, `position ≠ OFF_SITE`, §9 #2), which means an implementation built from this catalog alone will offer dock and yard actions on a trailer that is not here: `SEAL_TRAILER` on a trailer still outside the fence, and anything else whose other preconditions happen to be satisfiable off site. Two of those have been found by running it, both on an inbound live load whose freight is aboard from the moment it arrives. **Every action below needs its position precondition written in**, not inferred from which §2 table happens to list it.
+
 ### 5.1 Gate
 
 | Action | Preconditions | Effects |
@@ -1105,7 +1119,7 @@ Note what is deliberately *not* here: no requirement that a trailer be pre-regis
 | `START_SESSION` | Session `OPEN` with ≥1 shipment; every row in the required state | Session → `ACTIVE`; all rows in set → `LOADING`/`UNLOADING`; shipments → `LOADING`/`UNLOADING`. Normally the next action after `OPEN_SESSION`, since the set is already correct |
 | `END_SESSION` | Session `ACTIVE`; **an outcome recorded for every shipment in the set** | Session → `ENDED`. Per shipment — `LOADED`: row → `ON_BOARD`, shipment → `LOADED`. `NOT_LOADED`: row → `ASSIGNED`. `PARTIAL`: row → `PART_LOADED` (**supervisor only**, §9 #14). `UNLOADED`: row closed, shipment → `RECEIVED`. If no rows remain, `empty_verification → VERIFIED_EMPTY` |
 | `CANCEL_SESSION` | Session `OPEN`; or `ACTIVE` with **supervisor role** (§9 #14) | Session → `CANCELLED`; same per-shipment reconciliation as `END_SESSION`; reason code required |
-| `DECLARE_FILL_COMPLETE` | ≥1 `ON_BOARD` row; no `ACTIVE` session; **no `PART_LOADED` rows**; role permitted by facility config (§9 #13) | `fill_declaration → COMPLETE` |
+| `DECLARE_FILL_COMPLETE` | **≥1 `ON_BOARD` row whose direction is `OUTBOUND`** — inbound rows begin `ON_BOARD`, so "≥1 `ON_BOARD` row" was satisfied by a loaded inbound trailer still outside the fence (§3.2); no `OPEN` or `ACTIVE` session; **no `PART_LOADED` rows**; role permitted by facility config (§9 #13) | `fill_declaration → COMPLETE` |
 | `REOPEN_FILL` | `fill_declaration = COMPLETE`; not sealed | `fill_declaration → OPEN`; reason code required |
 | `PULL_FROM_DOCK` | No `OPEN` or `ACTIVE` session on the stay | Creates a MoveTask; DockStay closes on `START_MOVE` |
 
@@ -1130,7 +1144,7 @@ The planner-driven path is the original requirement to send an empty trailer to 
 |---|---|---|
 | `ASSIGN_SHIPMENT` | **Exception path** (§9 #37) — for preloads and empty-trailer-at-a-dock, which have no appointment to derive from. Outbound; shipment `PLANNED` with no TrailerLoad row; **trailer position ≠ `OFF_SITE`** (§9 #2); trailer `IN_SERVICE`; `fill_declaration = OPEN`; trailer has **no inbound rows at all** (§9 #16); `empty_verification ≠ UNVERIFIED` (§9 #6) | TrailerLoad row created `ASSIGNED`; shipment → `ASSIGNED` |
 | `UNASSIGN_SHIPMENT` | Row `ASSIGNED` (never `LOADING`, `PART_LOADED`, or later — §9 #5) | Row deleted; shipment → `PLANNED` |
-| `SEAL_TRAILER` | ≥1 `ON_BOARD` row; `fill_declaration = COMPLETE`; **no `PART_LOADED` rows**; no `ACTIVE` session | Seal recorded; outbound shipments → `STAGED` |
+| `SEAL_TRAILER` | **Trailer on site** — sealing is a physical act; ≥1 `ON_BOARD` row; `fill_declaration = COMPLETE` **if an outbound row is `ON_BOARD`**, scoped as `AUTHORIZE_DEPARTURE` and `READY_TO_DEPART` already scope it (§3.2) — a trailer leaving with inbound residual freight is a real sealing candidate with no load to declare; **no `PART_LOADED` rows**; no `ACTIVE` session | Seal recorded; outbound shipments → `STAGED` |
 | `BREAK_SEAL` | Sealed | Seal cleared; shipments → `LOADED`; reason code required |
 
 ### 5.5 Trailer

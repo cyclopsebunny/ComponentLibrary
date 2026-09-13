@@ -1,8 +1,12 @@
 # Glossary — Canonical Terms
 
-**Companion to:** `yard-dock-operations-model.md` v0.23, `action-availability-matrix.md` v0.16
-**Status:** Draft v0.10 — the roster's lists are not disjoint
+**Companion to:** `yard-dock-operations-model.md` v0.24, `action-availability-matrix.md` v0.17
+**Status:** Draft v0.11 — the fill declaration is about an outbound load
 **Purpose:** The single source of truth for every entity, state, action, flag, and label. When this document and another disagree, this one is wrong and should be corrected — but until it is, it is what the product, the training material, and support should say.
+
+### Changes from v0.10
+- **Fill declaration and `DECLARE_FILL_COMPLETE` reworded** (§5.1, §7). "No more freight is going on" and "the system cannot infer fullness" both read as though the dimension described the trailer, so the precondition was written as "freight aboard" — which an inbound trailer satisfies on arrival. It is about an **outbound load this facility put on** (model §3.2).
+- **`SEAL_TRAILER` entry** notes the on-site precondition and the outbound scoping.
 
 ### Changes from v0.9
 - **§4.1: the "Takes" lists are not disjoint, and now say which actions are shared.** Four actions have more than one owning role — two because flows' Actor column names two people in one cell, two because a `roles_can_*` list names several. Ownership is a set (matrix §1.8).
@@ -173,7 +177,7 @@ The first two are the Actor column being read as prose when it is really a set. 
 | **Destination** | `AWAITING_ASSIGNMENT` · `DOCK_ASSIGNED` · `YARD_ASSIGNED` · `NONE` | A **trailer** dimension — it outlives the visit. `SPOTTED` is **not** a value here; use derived `AT_DESTINATION` |
 | **Readiness** | `NOT_READY` · `IN_PREP` · `READY` | Facility-configured requirements. Empty list ⇒ always `READY` |
 | **Service** | `IN_SERVICE` · `OUT_OF_SERVICE` | Damage, reefer failure, DOT hold |
-| **Fill declaration** | `OPEN` · `COMPLETE` | Human judgment; the system cannot infer fullness |
+| **Fill declaration** | `OPEN` · `COMPLETE` | Human judgment; the system cannot infer fullness. **About an outbound load this facility put on**, not about the trailer's fullness in general — it is `OPEN` on a loaded inbound trailer and means nothing there (model §3.2) |
 | **Empty verification** | `UNVERIFIED` · `CLAIMED_EMPTY` · `VERIFIED_EMPTY` | Driver claim at the gate, with optional physical check |
 | **Identity confidence** | `CORROBORATED` · `SINGLE_SOURCE` · `DISPUTED` | Derived from identification readings |
 | **Tractor** | `ATTACHED` · `NONE` | **Stored, not derived.** Nothing else in the model records whether a tractor is on the trailer, so there is nothing to compute it from. Set on arrival by `BIND_TRAILER_TO_LEG` for a BRING leg and by `HOOK_TRAILER`; cleared by `DROP_TRAILER` and `CHECK_OUT`. Decides whether movement is a task or a destination (§6.3) |
@@ -262,7 +266,7 @@ Inbound rows begin at `ON_BOARD` — the freight is already aboard, so there is 
 | `START_SESSION` | Begins work; rows → `LOADING` / `UNLOADING` |
 | `END_SESSION` | **A reconciliation, not a button** — records an outcome for every shipment in the session |
 | `CANCEL_SESSION` | Abandons the session. Supervisor role if `ACTIVE` |
-| `DECLARE_FILL_COMPLETE` | Declares no more freight is going on. Gates sealing and departure |
+| `DECLARE_FILL_COMPLETE` | Declares no more freight is going on **this outbound load**. Gates sealing and departure. Needs an outbound row already `ON_BOARD`, which means after a dock session has run — read as "freight aboard" it was available on a loaded inbound trailer outside the fence (model §3.2) |
 | `REOPEN_FILL` | Reverses it, with a reason |
 | `PULL_FROM_DOCK` | Requests removal from the dock; closes the DockStay on move start |
 
@@ -272,7 +276,7 @@ Inbound rows begin at `ON_BOARD` — the freight is already aboard, so there is 
 |---|---|
 | `ASSIGN_SHIPMENT` | **Exception path.** Links an outbound shipment to a trailer **on site**, for preloads and unplanned loads. Appointment-driven work gets its rows from `BIND_TRAILER_TO_LEG` |
 | `UNASSIGN_SHIPMENT` | Unlinks it. Only while `ASSIGNED` — never once loading has begun |
-| `SEAL_TRAILER` | Records a seal. Requires fill complete and no part-loaded rows |
+| `SEAL_TRAILER` | Records a seal. Trailer must be **on site** — it is a physical act. Requires fill complete **where an outbound load is aboard**, and no part-loaded rows; a trailer leaving with inbound residual freight has no load to declare |
 | `BREAK_SEAL` | Clears it, with a reason |
 
 ### 6.6 Trailer

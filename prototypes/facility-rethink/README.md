@@ -86,10 +86,10 @@ Two scenarios sit in that group:
 
 ## Findings
 
-Twenty findings are built in — places where the four documents could not all be implemented at
-once, plus five things they did not know about. Eighteen have been applied back to the documents
-in `../../docs/facility-rethink/` — model v0.23, matrix v0.16, flows v0.9, glossary v0.10 — and
-the rail marks which. Five things are still open there:
+Twenty-one findings are built in — places where the four documents could not all be implemented
+at once, plus five things they did not know about. Nineteen have been applied back to the
+documents in `../../docs/facility-rethink/` — model v0.24, matrix v0.17, flows v0.9,
+glossary v0.11 — and the rail marks which. Five things are still open there:
 
 - **The role → action mapping (F19).** Five actions are permission-gated; the other thirty-five
   have no owning role anywhere in the four documents. glossary §4.1 now holds an inferred roster
@@ -112,6 +112,14 @@ the rail marks which. Five things are still open there:
   a placeholder. Found by implementing §10.12, so it is a finding against text written in
   this round rather than against the original set.
 
+**Where an action may be taken is a precondition, and model §5 almost never states it** (F21).
+Matrix §2 is keyed by position, so an action's absence from a position's table is the only place
+"not available there" is ever said — and the catalog names a position precondition on one action
+out of forty. An engine built from the catalog therefore offers dock actions on trailers that are
+not here, which is how a dock lead came to be able to declare an inbound load complete while the
+driver was still outside the fence, and then to seal it. Found twice in one report, which is what
+makes it a class rather than a typo.
+
 The finding that mattered most, and the shape of the rest: **no action positioned a trailer
 that has a driver.** Deleting `DRIVER_SELF` was right, but §5 then had nothing that moved such
 a trailer — `CREATE_MOVE_TASK` is hidden while a tractor is attached and `COMPLETE_MOVE`
@@ -123,7 +131,7 @@ you are standing — they keep the scenario, the step and the state with them.
 
 ## Source documents
 
-Built against `yard-dock-operations-model.md` v0.23, `flows.md` v0.9,
-`action-availability-matrix.md` v0.16 and `glossary.md` v0.10, which live beside this bench in
+Built against `yard-dock-operations-model.md` v0.24, `flows.md` v0.9,
+`action-availability-matrix.md` v0.17 and `glossary.md` v0.11, which live beside this bench in
 `../../docs/facility-rethink/`. Every section reference in the page points into them, and the
 two should be changed together — that is the whole arrangement.

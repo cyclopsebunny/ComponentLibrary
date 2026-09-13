@@ -66,10 +66,10 @@ Five things that, if lost, make the rest incoherent:
 
 | Document | Version | Size |
 |---|---|---|
-| yard-dock-operations-model.md | v0.23 | ~187 KB |
+| yard-dock-operations-model.md | v0.24 | ~190 KB |
 | flows.md | v0.9 | ~26 KB |
-| action-availability-matrix.md | v0.16 | ~39 KB |
-| glossary.md | v0.10 | ~32 KB |
+| action-availability-matrix.md | v0.17 | ~42 KB |
+| glossary.md | v0.11 | ~33 KB |
 
 **38 decisions resolved. 14 items open** (model §10). The model is decided enough to build.
 
@@ -96,7 +96,7 @@ two owners (matrix §1.8, glossary §4.1).
 
 ### Known maintenance risks
 
-- **The model document is too large.** At ~187 KB it is past the size where a sequential edit can silently delete a section — this has already happened once. It should be split into domain model, decision log, and UI spec. The v0.21 round was edited by targeted replacement only, and §10 has grown since.
+- **The model document is too large.** At ~190 KB it is past the size where a sequential edit can silently delete a section — this has already happened once. It should be split into domain model, decision log, and UI spec. The v0.21 round was edited by targeted replacement only, and §10 has grown since.
 - **Four documents will drift.** Nothing enforces consistency. The glossary is designated the tiebreaker, which only works if it is the document people actually open.
 - ~~`CLEAR_VISIT` naming inconsistency~~ — **resolved in v0.20**: renamed `AUTHORIZE_DEPARTURE`. ~~`fill_declaration` wording~~ — **resolved in glossary v0.8**. Two naming items remain open in glossary §11.
 
@@ -105,5 +105,6 @@ two owners (matrix §1.8, glossary §4.1).
 1. Answer model §10.4 — multi-facility identity scoping — and **§10.12 and §10.13 together**: custody, `TrailerStay`, and the two-visit appointment. These are the items that are entity shape rather than behaviour, and shape is what you pay for later. They also decide what the history screens can ever show.
 2. Build the event log first. Every bracketing in §10.12 is a span over it, so the log has to carry the actor on every entry.
 3. Enforce two constraints in the database, not application code: `TrailerLoad.shipment_id` unique, and single-occupancy on numbered yard spots.
+3a. Write a position precondition into **every** action in model §5. The catalog has one, and matrix §2's position tables are the only other place availability-by-position is stated — so anything built from the catalog will offer dock actions on trailers that are not at the facility.
 4. Design the `END_SESSION` reconciliation screen early. It is the most consequential new UI and the easiest to under-build into a confirmation dialog.
 5. Walk the stress tests (model §11) with dock and yard staff at more than one facility.
