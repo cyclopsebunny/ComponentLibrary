@@ -21,12 +21,15 @@ Not a UI prototype. It is the document set's own rules, implemented once and exe
   decided in one place. This is what matrix §6 open question 1 asks for.
 - **Matrix §2.1 transcribed** and compared against what the engine derives from the model's
   preconditions. Where they disagree, the action chip says so on its face.
-- **A board instead of a role picker.** One lane per person — driver, gate, clerk, dispatcher,
-  dock lead, yard team, supervisor, and the world. Each lane shows what that person can do now,
-  what they are waiting on and **who they are waiting for**, and which of their actions another
-  lane is waiting on. Clicking an action performs it as that person, so a permission gate reads
-  as "someone else's job" rather than as a refusal in your own lane. A headline says whether
-  this stretch is parallel work or a queue.
+- **A board instead of a role picker.** A column is not a person, it is a **set** of people:
+  everyone who can take exactly the same actions. Where one person owns an action the column is
+  that person; where several may take it — the gate or the driver, the dock lead or the
+  supervisor, whoever `roles_can_declare_fill_complete` names — they share one column and the
+  action is written once, with a pick of who takes it. Each column shows what those people can
+  do now, what they are waiting on and **who they are waiting for**, and which of their actions
+  somebody else is waiting on. Clicking an action performs it as that person, so a permission
+  gate reads as "someone else's job" rather than as a refusal in your own column. A headline
+  says whether this stretch is parallel work, a queue, or the same action in several hands.
 - **Two primary actions derived, never configured** (matrix §1.7) — the driver's next step and
   the facility's, because after a drop those are different objects' business.
 - **Concurrent script tracks.** A scenario's steps carry a track; the driver's and the trailer's
@@ -83,15 +86,17 @@ Two scenarios sit in that group:
 
 ## Findings
 
-Nineteen findings are built in — places where the four documents could not all be implemented at
-once, plus four things they did not know about. Seventeen have been applied back to the documents
-in `../../docs/facility-rethink/` — model v0.23, matrix v0.15, flows v0.8, glossary v0.9 — and
+Twenty findings are built in — places where the four documents could not all be implemented at
+once, plus five things they did not know about. Eighteen have been applied back to the documents
+in `../../docs/facility-rethink/` — model v0.23, matrix v0.16, flows v0.9, glossary v0.10 — and
 the rail marks which. Five things are still open there:
 
 - **The role → action mapping (F19).** Five actions are permission-gated; the other thirty-five
   have no owning role anywhere in the four documents. glossary §4.1 now holds an inferred roster
-  and matrix §1.8 says what is needed, but until the action catalog carries an owning role the
-  board's lanes remain the bench's guess rather than the documents'.
+  and matrix §1.8 says what is needed, but until the action catalog carries owning roles the
+  board's columns remain the bench's guess rather than the documents'. The shape of that column
+  is settled, at least: **a set, not a value** (F20) — ownership is already plural in three
+  Actor cells and in every `roles_can_*` list, which no document had noticed.
 - **§10.10 — does appointment-driven binding need the empty check `ASSIGN_SHIPMENT` has?**
   An operational decision, not an editorial one, so it is written up as an open item with a
   recommendation rather than resolved.
@@ -118,7 +123,7 @@ you are standing — they keep the scenario, the step and the state with them.
 
 ## Source documents
 
-Built against `yard-dock-operations-model.md` v0.23, `flows.md` v0.8,
-`action-availability-matrix.md` v0.15 and `glossary.md` v0.9, which live beside this bench in
+Built against `yard-dock-operations-model.md` v0.23, `flows.md` v0.9,
+`action-availability-matrix.md` v0.16 and `glossary.md` v0.10, which live beside this bench in
 `../../docs/facility-rethink/`. Every section reference in the page points into them, and the
 two should be changed together — that is the whole arrangement.

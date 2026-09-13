@@ -1,8 +1,13 @@
 # Action Availability Matrix
 
 **Companion to:** `yard-dock-operations-model.md` v0.23
-**Status:** Draft v0.15 — who can act, and who is waiting on whom
+**Status:** Draft v0.16 — an action can be owned by more than one role
 **Purpose:** For any trailer in any state, define which actions appear, which appear disabled, which are hidden, and what the user is told — so a screen can be built without re-deriving preconditions from the action catalog.
+
+### Changes from v0.15
+Reported: where two or more people can take the same action, one column per person shows it twice and implies a choice that does not exist.
+- **§1.8 extended** — ownership is a **set** of roles, not a single value. Three of flows' actor strings already name two people, and the config role lists already make ownership plural, so the catalog column has to be `owning_roles`. A surface that groups by person must group by *set* of people or it renders the same action once per owner.
+- **§1.8:** "who can act in parallel" is now stated as three cases, not two — the third is the same action in several hands, where the parallelism is a choice of who rather than work that proceeds at once.
 
 ### Changes from v0.14
 Reported: a role picker makes a multi-party process look single-threaded and hides the blocking relationships entirely.
@@ -161,12 +166,22 @@ Everything above answers "what can be done to this trailer". A yard also asks a 
 
 **A clearing action on every condition.** §1.1's entire test turns on "the clearing action", and §3's tables never say what it is. Without that link nothing can compute that the clerk's departure authorization is waiting on the dock lead's load declaration — which is the single most useful thing a shift supervisor could be shown. Add a clearing-action column to §3.
 
-With both, three things fall out for free:
+**And the owning role is a set, not a value.** This is the part that is easy to get wrong in the schema and expensive to change afterwards. Ownership is already plural in two places in the existing documents:
+
+- **flows' Actor column already names two people in one cell** — `Guard / driver`, `Dock lead / supervisor`, `Wash / maintenance`. Read as a single string these are three unnamed roles; read correctly they are three actions with two owners each.
+- **every `roles_can_*` config key is a list.** `roles_can_declare_fill_complete` defaults to two roles (model §2.11), which means the dock lead and the supervisor *both* own `DECLARE_FILL_COMPLETE` by default, and `RESOLVE_IDENTIFICATION` is permitted to three. The rules have said ownership is plural from the start; only the prose reads as though each action had one owner.
+
+So the catalog column is **`owning_roles`**, and two consequences follow for any screen built on it:
+
+1. **Group by the set, not by the person.** A surface that draws one column per role and files each action under its owner will draw `DECLARE_FILL_COMPLETE` twice — once under the dock lead and once under the supervisor — and a reader cannot tell that these are the same action rather than two that happen to share a name. Group actions by *identical owner set* instead: one column for the dock lead alone, one for the supervisor alone, and one for the two of them jointly, where the action is written once and the reader picks who takes it.
+2. **A permission gate splits an action across sets.** When the rules permit a role the flows actor is not, the same action is available to one set and blocked for another, and both need to be on screen: the permitted set so somebody can act, and the named actor so the escalation in §1.1 has somewhere to read. These are two entries for one action and that is correct — unlike case 1, the treatment genuinely differs.
+
+With all three, three things fall out for free:
 
 | | |
 |---|---|
 | **Who is blocking whom** | A blocked action's condition names its clearing action; the clearing action names its role |
-| **What is genuinely parallel** | Two available actions in different roles' hands, neither clearing the other's blockers, can be taken in any order — and saying so prevents a queue being imposed where the operation has none |
+| **What is genuinely parallel** | Three cases, and they read differently. *Different work in different hands* — two available actions owned by disjoint sets, neither clearing the other's blockers, can be taken in any order, and saying so prevents a queue being imposed where the operation has none. *Sequenced work in one pair of hands* — the second action is blocked by the first, but the same person owns both, so it is their own ordering and not a handoff. *The same action in several hands* — one action, several owners, where the only parallelism is the choice of who, and nothing is gained by doing it twice |
 | **Which blocks are somebody else's** | The §1.1 escalation case: a step that is ready except for who is asking |
 
 This also answers §6 open question 1, which asks for the treatment to become a property of the condition in code. A condition that carries its treatment, its precedence and its clearing action is the whole of §1 as data.

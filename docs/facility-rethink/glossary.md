@@ -1,8 +1,11 @@
 # Glossary — Canonical Terms
 
-**Companion to:** `yard-dock-operations-model.md` v0.23, `action-availability-matrix.md` v0.15
-**Status:** Draft v0.9 — a roster of roles
+**Companion to:** `yard-dock-operations-model.md` v0.23, `action-availability-matrix.md` v0.16
+**Status:** Draft v0.10 — the roster's lists are not disjoint
 **Purpose:** The single source of truth for every entity, state, action, flag, and label. When this document and another disagree, this one is wrong and should be corrected — but until it is, it is what the product, the training material, and support should say.
+
+### Changes from v0.9
+- **§4.1: the "Takes" lists are not disjoint, and now say which actions are shared.** Four actions have more than one owning role — two because flows' Actor column names two people in one cell, two because a `roles_can_*` list names several. Ownership is a set (matrix §1.8).
 
 ### Changes from v0.8
 - **§4.1 added — a roster of roles.** The documents named actors only in flows' placeholder Actor column and gated five actions on config; there was no vocabulary for the people doing the work. Inferred, and marked as such.
@@ -134,15 +137,26 @@ Names that appeared in earlier drafts and no longer exist. Listed so old notes r
 
 | Role | Takes | Notes |
 |---|---|---|
-| **Driver** | `SELF_REGISTER`, `POSITION_TRAILER`, `DROP_TRAILER`, `HOOK_TRAILER`, `DECLARE_TAKE_LEG_CHANGE` | Not staff. Acts through the kiosk and the physical world |
-| **Gate** | `RECORD_ARRIVAL`, `ADMIT`, `REGISTER_AND_ADMIT`, `HOLD_OUTSIDE`, `BIND_TRAILER_TO_LEG`, `VERIFY_EMPTY`, `TURN_AWAY`, `CHECK_OUT` | Guard or kiosk; the two are interchangeable here |
-| **Clerk** | `AUTHORIZE_DEPARTURE`, `RESOLVE_IDENTIFICATION` | The records check, not a lane operation (matrix §2.3) |
+| **Driver** | `SELF_REGISTER`, `POSITION_TRAILER`, `DROP_TRAILER`, `HOOK_TRAILER`, `DECLARE_TAKE_LEG_CHANGE`, **`BIND_TRAILER_TO_LEG`** | Not staff. Acts through the kiosk and the physical world |
+| **Gate** | `RECORD_ARRIVAL`, `ADMIT`, `REGISTER_AND_ADMIT`, `HOLD_OUTSIDE`, **`BIND_TRAILER_TO_LEG`**, `VERIFY_EMPTY`, `TURN_AWAY`, `CHECK_OUT`, **`RESOLVE_IDENTIFICATION`** | Guard or kiosk; the two are interchangeable here |
+| **Clerk** | `AUTHORIZE_DEPARTURE`, **`RESOLVE_IDENTIFICATION`** | The records check, not a lane operation (matrix §2.3) |
 | **Dispatcher** | `ASSIGN_DOCK`, `RELEASE_DOCK`, `ASSIGN_YARD`, `CREATE_MOVE_TASK`, `ASSIGN_MOVE_TASK`, `ASSIGN_SHIPMENT`, `UNASSIGN_SHIPMENT` | "Planner" in flows is the same role wearing a different hat |
-| **Dock lead** | `OPEN_SESSION`, `START_SESSION`, `END_SESSION`, `DECLARE_FILL_COMPLETE`, `REOPEN_FILL`, `SEAL_TRAILER`, `BREAK_SEAL`, `PULL_FROM_DOCK`, session membership | `DECLARE_FILL_COMPLETE` is additionally role-gated by config, so the permitted role may not be this one |
-| **Yard team** | `START_MOVE`, `COMPLETE_MOVE`, `CANCEL_MOVE`, `INTAKE_TRAILER`, `ADVANCE_READINESS` | Spotters, wash bay, whoever the facility puts on it |
-| **Supervisor** | `ADJUST_STATE`, `CORRECT_TRAILER_IDENTITY`, `MERGE_TRAILERS`, `CORRECT_DEPARTURE`, `CANCEL_SESSION` on an active session, `PARTIAL` outcomes | Matrix §1.6's third tier. Mostly standing overrides rather than anybody's next step |
+| **Dock lead** | `OPEN_SESSION`, `START_SESSION`, `END_SESSION`, **`DECLARE_FILL_COMPLETE`**, `REOPEN_FILL`, `SEAL_TRAILER`, `BREAK_SEAL`, `PULL_FROM_DOCK`, session membership | Shares the fill declaration with the supervisor by default, and the config may move it away from this role entirely |
+| **Yard team** | `START_MOVE`, `COMPLETE_MOVE`, `CANCEL_MOVE`, `INTAKE_TRAILER`, **`ADVANCE_READINESS`** | Spotters, wash bay, whoever the facility puts on it |
+| **Supervisor** | `ADJUST_STATE`, `CORRECT_TRAILER_IDENTITY`, `MERGE_TRAILERS`, `CORRECT_DEPARTURE`, `CANCEL_SESSION` on an active session, `PARTIAL` outcomes, **`DECLARE_FILL_COMPLETE`**, **`RESOLVE_IDENTIFICATION`**, **`ADVANCE_READINESS`** | Matrix §1.6's third tier. Mostly standing overrides rather than anybody's next step |
 
-**Two cautions.** The permitted role for a config-gated action is whatever `roles_can_*` says, which may differ from the role that normally performs it — that divergence is exactly what strands a gate clerk (matrix §1.1). And a facility may merge these: one person is often gate, clerk and dispatcher on a night shift. The roster is a vocabulary, not an org chart.
+**These lists are not disjoint, and the bold entries are why.** An action can be owned by more than one role, so ownership is a set (matrix §1.8) and this table is a view of it read one role at a time. Four actions are shared, for two different reasons:
+
+| Action | Owners | Because |
+|---|---|---|
+| `BIND_TRAILER_TO_LEG` | Driver, Gate | flows names the actor `Guard / driver` — the driver does it by self-registering, the guard by typing it in |
+| `ADVANCE_READINESS` | Yard team, Supervisor | flows names the actor `Wash / maintenance` |
+| `DECLARE_FILL_COMPLETE` | Dock lead, Supervisor | `roles_can_declare_fill_complete` is a list and defaults to both |
+| `RESOLVE_IDENTIFICATION` | Clerk, Gate, Supervisor | permitted to all three; the guard's own reading is one of the two sources being reconciled |
+
+The first two are the Actor column being read as prose when it is really a set. The last two are config, and they will differ by facility — which is the point of their being config.
+
+**Two cautions.** The permitted roles for a config-gated action are whatever `roles_can_*` says, which may not include the role that normally performs it — that divergence is exactly what strands a gate clerk (matrix §1.1). And a facility may merge these: one person is often gate, clerk and dispatcher on a night shift. The roster is a vocabulary, not an org chart.
 
 ---
 
@@ -341,7 +355,7 @@ Computed, never stored. Internal name → what a user sees.
 | **Available Pool** | A **count** | `AVAILABLE_FOR_ASSIGNMENT`. A stock view, not a queue |
 | **Identification Queue** | Ordered | Disputed and unmatched readings |
 | **Effective Config** | Read-only | What one facility currently runs, with last-changed actor |
-| **Who can act now** | One lane per role | Each role's available actions, what each is waiting on, and which of their actions another role is waiting on. Needs the two additions in matrix §1.8; until then it cannot be built from the documents |
+| **Who can act now** | One column per *set* of roles | Each column is everyone who can take exactly the same actions, so an action with two owners is written once rather than once per owner (§4.1, matrix §1.8). Shows what each column is waiting on, who they are waiting for, and which of their actions somebody else is waiting on. Needs the three additions in matrix §1.8; until then it cannot be built from the documents |
 
 ---
 

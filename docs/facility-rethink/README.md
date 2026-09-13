@@ -12,7 +12,7 @@ Four documents, one subject, deliberately different cuts. Each answers a differe
 | "What is the difference between an outbound pickup and an outbound preload?" | **flows.md** §6, §6a |
 | "What can a user do to *this* trailer right now?" | **action-availability-matrix.md** |
 | "Who can act right now, and who is waiting on whom?" | **action-availability-matrix.md** §1.8 — and it says what is still missing |
-| "Who does this action?" | **glossary.md** §4.1 — inferred, and marked as such |
+| "Who does this action?" | **glossary.md** §4.1 — inferred, and marked as such. Four actions have more than one owner |
 | "What does `PART_LOADED` mean? What do we call this?" | **glossary.md** |
 | "Why is it built this way? What did we decide and why?" | **yard-dock-operations-model.md** |
 
@@ -66,10 +66,10 @@ Five things that, if lost, make the rest incoherent:
 
 | Document | Version | Size |
 |---|---|---|
-| yard-dock-operations-model.md | v0.23 | ~163 KB |
-| flows.md | v0.8 | ~25 KB |
-| action-availability-matrix.md | v0.15 | ~34 KB |
-| glossary.md | v0.9 | ~23 KB |
+| yard-dock-operations-model.md | v0.23 | ~187 KB |
+| flows.md | v0.9 | ~26 KB |
+| action-availability-matrix.md | v0.16 | ~39 KB |
+| glossary.md | v0.10 | ~32 KB |
 
 **38 decisions resolved. 14 items open** (model §10). The model is decided enough to build.
 
@@ -90,11 +90,13 @@ says when they disagree. Run the flows there after changing anything here.
 
 The exception is the outbound preload (§4 pattern 4a), which came from operations rather than
 from the engine — a reminder that the bench can only catch what the documents contradict, never
-what they simply do not know about.
+what they simply do not know about. The same held for the board of who can act: nothing
+contradicted anything, and it still took building the screen to notice that an action can have
+two owners (matrix §1.8, glossary §4.1).
 
 ### Known maintenance risks
 
-- **The model document is too large.** At ~163 KB it is past the size where a sequential edit can silently delete a section — this has already happened once. It should be split into domain model, decision log, and UI spec. The v0.21 round was edited by targeted replacement only, and §10 has grown since.
+- **The model document is too large.** At ~187 KB it is past the size where a sequential edit can silently delete a section — this has already happened once. It should be split into domain model, decision log, and UI spec. The v0.21 round was edited by targeted replacement only, and §10 has grown since.
 - **Four documents will drift.** Nothing enforces consistency. The glossary is designated the tiebreaker, which only works if it is the document people actually open.
 - ~~`CLEAR_VISIT` naming inconsistency~~ — **resolved in v0.20**: renamed `AUTHORIZE_DEPARTURE`. ~~`fill_declaration` wording~~ — **resolved in glossary v0.8**. Two naming items remain open in glossary §11.
 

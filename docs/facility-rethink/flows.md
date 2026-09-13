@@ -1,8 +1,11 @@
 # Operational Flows — States, Flags, and Actions by Step
 
 **Companion to:** `yard-dock-operations-model.md` v0.23, `action-availability-matrix.md` v0.15, `glossary.md` v0.9
-**Status:** Draft v0.8 — the Actor column is load-bearing after all
+**Status:** Draft v0.9 — one cell, two people
 **Purpose:** Walk each appointment type from start to finish, showing at every step which states change, which flags can appear, which actions are available, and who acts.
+
+### Changes from v0.8
+- **§12 item 3:** three Actor cells name two people — `Guard / driver`, `Dock lead / supervisor`, `Wash / maintenance`. Read as single strings they are three roles nobody has defined; read as sets they are three actions with two owners each, which is what they are (glossary §4.1, matrix §1.8).
 
 ### Changes from v0.7
 - **§12 item 3 upgraded from caveat to named gap.** The Actor column turns out to be the only place the documents say who performs an action, so a roster now lives in glossary §4.1 and matrix §1.8 says what is still missing.
@@ -299,6 +302,6 @@ These interrupt the spine rather than belonging to one flow.
 
 1. **Screen layouts.** Which surface each step appears on — gate kiosk, dock board, yard map, queues. This says what is available at each step, not where.
 2. **Timing and SLAs.** No target durations per phase. Worth adding once real data exists.
-3. **Who exactly acts.** "Dispatcher," "dock lead," and "clerk" are placeholders; actual roles are facility-configured. **This is now a named gap rather than a caveat:** glossary §4.1 holds a roster of roles, inferred from this column, and matrix §1.8 explains what it is for — nothing else in the four documents assigns the other thirty-five actions to anybody, so no screen can say who is waiting on whom.
+3. **Who exactly acts.** "Dispatcher," "dock lead," and "clerk" are placeholders; actual roles are facility-configured. **This is now a named gap rather than a caveat:** glossary §4.1 holds a roster of roles, inferred from this column, and matrix §1.8 explains what it is for — nothing else in the four documents assigns the other thirty-five actions to anybody, so no screen can say who is waiting on whom. And the column is not even one role per row: `Guard / driver`, `Dock lead / supervisor` and `Wash / maintenance` each name **two people**, so what this column holds is a set of owners written as prose.
 4. **Concurrency across trailers.** In reality P2 for one trailer overlaps P4 for twenty others, and the queues (§8 of the glossary) are how that is actually managed. *Concurrency **within** one appointment — the driver's track and the trailer's after a drop — is no longer uncovered: see §1.1, flow 4a, and model §10.14.*
 5. **Flows 8+.** Reefer pre-cool, cross-dock, and other facility-specific patterns compose from the same spine but are not written out.

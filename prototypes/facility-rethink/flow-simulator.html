@@ -373,6 +373,17 @@ dialog footer{padding:11px 15px; border-top:1px solid var(--line); display:flex;
 .lane2.can>h4{background:var(--ok-bg); border-bottom-color:var(--ok-line)}
 .lane2.wait>h4{background:var(--warn-bg); border-bottom-color:var(--warn-line)}
 .lane2.idle{opacity:.5}
+/* a column that is more than one person: the action is theirs jointly */
+.lane2.shared{border-style:dashed; border-color:var(--line-2)}
+.lane2.shared.can{border-color:var(--nav)}
+.who{display:flex; flex-wrap:wrap; gap:4px; align-items:center; font-size:10.5px;
+  color:var(--steel); margin-bottom:1px}
+.whob{font-family:inherit; font-size:10.5px; font-weight:600; padding:1px 6px;
+  cursor:pointer; border:1px solid var(--line-2); border-radius:3px;
+  background:var(--surface); color:var(--steel)}
+.whob:hover{border-color:var(--nav); color:var(--nav)}
+.whob.on{border-color:var(--nav); background:var(--nav); color:var(--nav-ink)}
+.shn{display:block; margin-top:3px; color:var(--steel)}
 .lane2 .body2{padding:8px; display:flex; flex-direction:column; gap:6px; min-width:0}
 .la{display:flex; flex-direction:column; gap:1px; align-items:flex-start; width:100%;
   text-align:left; cursor:pointer; padding:6px 9px; border-radius:4px;
@@ -450,7 +461,7 @@ dialog footer{padding:11px 15px; border-top:1px solid var(--line); display:flex;
 <header class="top">
   <span class="brand">
     <b>Yard Flow Bench</b>
-    <span>Walks the yard &amp; dock document set against itself — model v0.23 · flows v0.8 · matrix v0.15 · glossary v0.9</span>
+    <span>Walks the yard &amp; dock document set against itself — model v0.23 · flows v0.9 · matrix v0.16 · glossary v0.10</span>
   </span>
   <span class="topctl">
     <button class="mini" id="cfgbtn" type="button">Facility config</button>
@@ -661,25 +672,28 @@ const ROLES = [
   {id:"SUPERVISOR", label:"Supervisor"}
 ];
 
-/* One lane per person at the facility. Lane membership comes from each
-   action's `actor` — which is the flows document's own Actor column, and
-   flows §12 warns those are "placeholders; actual roles are facility-
-   configured". Nothing in the four documents defines an authoritative
-   role → action matrix; matrix §3.4 lists only the five permission gates.
-   These lanes are therefore inferred, and that is finding F19. */
+/* The people at the facility. A board column is a *set* of these — everyone
+   who can take exactly the same actions — so two people with nothing to
+   choose between them share one column rather than appearing twice.
+
+   Membership comes from each action's `actor` — which is the flows document's
+   own Actor column, and flows §12 warns those are "placeholders; actual roles
+   are facility-configured" — unioned with the roles the engine's own
+   permission gates name. Nothing in the four documents defines an
+   authoritative role → action matrix; matrix §3.4 lists only the five
+   permission gates. So the sets are partly inferred, and that is finding F19. */
 const LANES = [
   {id:"DRIVER",     label:"Driver",     actors:["Driver","Driver at the gate"]},
   {id:"GUARD",      label:"Gate",       actors:["Guard","Gate","Gate / kiosk","Kiosk / guard","Guard / driver"]},
   {id:"CLERK",      label:"Clerk",      actors:["Clerk"]},
   {id:"DISPATCHER", label:"Dispatcher", actors:["Dispatcher","Planner"]},
   {id:"DOCK_LEAD",  label:"Dock lead",  actors:["Dock lead","Dock crew","Dock lead / supervisor","Dock lead (role-gated)"]},
-  {id:"SPOTTER",    label:"Yard team",  actors:["Spotter","Yard team","Wash / maintenance"]},
+  {id:"SPOTTER",    label:"Yard team",  actors:["Spotter","Yard team","Wash / maintenance","Wash","Wash bay"]},
   {id:"SUPERVISOR", label:"Supervisor", actors:["Supervisor","Maintenance"]},
   {id:"WORLD",      label:"The world",  actors:[], world:true}
 ];
 const LANE_BY_ACTOR = {};
 LANES.forEach(L => L.actors.forEach(a => { LANE_BY_ACTOR[a] = L.id; }));
-const laneOfAction = a => LANE_BY_ACTOR[a.actor] || null;
 
 const PHASES = [
   {k:"P0", n:"Plan",             q:"What is expected?"},
@@ -3681,7 +3695,11 @@ const SEEDED = [
  refs:"matrix §1.1 · matrix §3.3 · matrix §3.4 · matrix §1.7 · glossary §11 #4 · model §9 #13"},
 {id:"F19", sev:"gap", title:"Nothing in the documents can answer \u201cwho can act right now\u201d",
  body:"<b>Reported: a role dropdown makes a multi-party process look single-threaded.</b> The question a yard actually asks is who can act now, who is waiting on whom, and what can proceed in parallel. Two pieces are missing before that view can be built from the documents.<br><br><b>1. There is no role \u2192 action mapping.</b> Matrix §3.4 names permission gates for <i>five</i> actions and says nothing about who performs the other thirty-five. flows has an Actor column, but §12 item 3 calls those entries placeholders \u2014 \u201c\u2018dispatcher\u2019, \u2018dock lead\u2019 and \u2018clerk\u2019 are placeholders; actual roles are facility-configured\u201d. The glossary, which owns vocabulary, has no roster of roles at all. So the lanes on this board are <i>inferred</i> from those placeholder actor names, and they are the weakest thing in the bench.<br><br><b>2. Nothing records which action clears which condition.</b> Matrix §1.1 reasons entirely in terms of \u201cthe clearing action\u201d \u2014 it is the whole basis of the disable-versus-hide test \u2014 but §3's condition tables list conditions and reason strings with no link to the actions that clear them. Without that link no screen can compute that the clerk is waiting on the dock lead, which is the fact the operation cares about most. The bench had to add a <span class=\"id\">CLEARS</span> table by hand.<br><br>Both are cheap to fix and both are data rather than prose: a roster of roles in the glossary, an owning role on each action in the catalog, and a clearing-action field on each condition in matrix §3. That last one also answers matrix §6 open question 1, which asks for the treatment to become a property of the condition in code.",
- refs:"matrix §3.4 · matrix §1.1 · matrix §3 · matrix §6 Q1 · flows §12 item 3 · glossary §4 · model §2.11"}
+ refs:"matrix §3.4 · matrix §1.1 · matrix §3 · matrix §6 Q1 · flows §12 item 3 · glossary §4 · model §2.11"},
+
+{id:"F20", sev:"gap", title:"An action can be owned by more than one role, and no document says so",
+ body:"<b>Reported: where two people can take the same action, one column per person shows it twice and implies a choice that does not exist.</b> Building that revealed something the documents read as though it were untrue: <b>ownership is a set, not a value</b> — and it already is, in two places, in the text as written.<br><br><b>1. Three Actor cells in flows name two people.</b> <span class=\"id\">Guard / driver</span>, <span class=\"id\">Dock lead / supervisor</span>, <span class=\"id\">Wash / maintenance</span>. Read as single strings they are three roles nobody has defined anywhere. Read correctly they are three actions with two owners each — and the first is the honest case: <span class=\"id\">BIND_TRAILER_TO_LEG</span> is what the driver does by self-registering <i>and</i> what the guard does by typing it in.<br><br><b>2. Every <span class=\"id\">roles_can_*</span> key is a list.</b> <span class=\"id\">roles_can_declare_fill_complete</span> defaults to <i>two</i> roles and <span class=\"id\">RESOLVE_IDENTIFICATION</span> is permitted to three. So the rules have said ownership is plural from the start; only the prose reads as though each action had one owner, and matrix §1.8 as first written asked for “an owning role” in the singular.<br><br>It matters for the schema, and it is expensive to change later: the catalog column is <span class=\"id\">owning_roles</span>. It matters for any screen too. Grouping by person draws <span class=\"id\">DECLARE_FILL_COMPLETE</span> once under the dock lead and once under the supervisor, and nothing tells the reader those are the same action rather than two that share a name — so the board now groups by <i>identical owner set</i> instead, and an action with two owners is written once with a pick of who takes it. The one case that <i>should</i> appear twice is a permission gate: available to the set the rules permit, blocked for the actor flows names, because that second entry is where the escalation reads (F18).<br><br>Found by building it, not by reading: nothing contradicted anything. The documents simply never said how many people own an action.",
+ refs:"matrix §1.8 · matrix §3.4 · glossary §4.1 · flows §12 item 3 · model §2.11 · model §5"}
 ];
 const SEV = {
   blocks:{l:"Blocks a flow", t:"r"}, contradiction:{l:"Documents disagree", t:"r"},
@@ -3709,7 +3727,8 @@ const APPLIED = {
   F16:"flows v0.7 §1.1 and §12 · matrix v0.13 §1.6 — and the bench now runs the two tracks",
   F17:"matrix v0.13 §1.7",
   F18:"matrix v0.14 §1.1, §3.3 and §3.4 · glossary v0.8 §7 and §11",
-  F19:"matrix v0.15 §1.8 and §5 · glossary v0.9 §4.1 and §8 · flows v0.8 §12 — the roster and the clearing-action link are now specified; the lanes stay inferred until the catalog carries an owning role"
+  F19:"matrix v0.15 §1.8 and §5 · glossary v0.9 §4.1 and §8 · flows v0.8 §12 — the roster and the clearing-action link are now specified; the columns stay inferred until the catalog carries owning roles",
+  F20:"matrix v0.16 §1.8 · glossary v0.10 §4.1 and §8 · flows v0.9 §12 — ownership is now specified as a set, with the four shared actions named"
 };
 SEEDED.forEach(f => { if (APPLIED[f.id]) f.fixed = APPLIED[f.id]; });
 
@@ -3916,159 +3935,290 @@ function actChip(r, isNext){
    THE BOARD — what every person at the facility can do right now
 
    A role dropdown made a multi-party process look single-threaded, and hid
-   the one thing that matters about it: who is holding up whom. One lane per
-   person instead. Clicking an action in a lane performs it AS that person, so
-   nothing has to be selected first — and a permission-gated action appears
-   only in the lane of whoever is actually allowed to take it, rather than as
-   a refusal in somebody else's.
-   ======================================================================== */
-function boardState(w, ctx){
-  const lanes = LANES.map(L => Object.assign({}, L, {avail:[], blocked:[], hidden:[]}));
-  const find = id => lanes.find(L => L.id===id);
-  const prevRole = w.role;
+   the one thing that matters about it: who is holding up whom.
 
-  const place = (id, a, isWorld) => {
-    const L = find(isWorld ? "WORLD" : laneOfAction(a)) || find("WORLD");
-    if (L.id!=="WORLD") w.role = L.id;      /* evaluate as the person who does it */
-    const res = treat(a.gate(w, ctx));
-    const e = {id, a, res, lane:L};
-    if (res.t==="A") L.avail.push(e);
-    else if (res.t==="D") L.blocked.push(e);
-    else L.hidden.push(e);
-    w.role = prevRole;
+   Columns of people instead — and a column is a *set* of people, not one
+   person: everyone who can take exactly these actions. Where one person owns
+   an action the column is that person. Where several may take it — the gate
+   or the driver, the dock lead or the supervisor, whoever the fill-complete
+   role list names — they share a column and the action is written once,
+   because two people with nothing to choose between them are one column and
+   not two identical ones. Clicking an action performs it AS that person, so
+   nothing has to be selected first; where a column is more than one person,
+   `acting as` says which of them.
+
+   Eligibility has two sources and they differ in kind: the flows document's
+   Actor column, a claim its own §12 calls a placeholder (F19), and the
+   engine's permission gates read out of the effective config, which are
+   facts. Where the rules name roles, the rules decide who may act, and the
+   named actor still sees the action blocked so the escalation path stays
+   visible (F18). Where they name nobody, the Actor column is all there is.
+   ======================================================================== */
+const ACT_LANES = LANES.filter(L => !L.world).map(L => L.id);
+const laneRank = id => ACT_LANES.indexOf(id);
+const setLabel = ids => {
+  const ls = ids.map(i => (LANES.find(L => L.id===i)||{}).label || i);
+  if (!ls.length) return (LANES.find(L => L.world)||{}).label || "the world";
+  return ls.length===1 ? ls[0]
+    : ls.slice(0,-1).join(", ") + " or " + ls[ls.length-1];
+};
+
+/* "Guard / driver" is two people, not one actor string. */
+function laneTokens(actor){
+  const out = [];
+  const add = k => {
+    const id = LANE_BY_ACTOR[k] ||
+      LANE_BY_ACTOR[k.charAt(0).toUpperCase()+k.slice(1)];
+    if (id && out.indexOf(id)<0) out.push(id);
   };
-  Object.keys(ACTIONS).forEach(id => place(id, ACTIONS[id], false));
-  Object.keys(WORLD).forEach(id => place(id, WORLD[id], true));
-  w.role = prevRole;
+  if (actor.indexOf("/")>=0) actor.split("/").forEach(t => add(t.trim()));
+  else add(actor);
+  if (!out.length && LANE_BY_ACTOR[actor]) out.push(LANE_BY_ACTOR[actor]);
+  return out.sort((a,b) => laneRank(a)-laneRank(b));
+}
+
+/* Everyone who may take this action at all. A gate that permits every role is
+   not a gate — that is the common case, and there the Actor column is the only
+   claim anyone has made. A gate that names some roles is the rules speaking,
+   so those people own the action whatever the Actor column says. */
+function eligibleLanes(w, ctx, a){
+  const listed = laneTokens(a.actor||"");
+  const prev = w.role, permitted = [];
+  ACT_LANES.forEach(r => {
+    w.role = r;
+    if (!a.gate(w, ctx).some(f => f.cls===CLS.PERMISSION)) permitted.push(r);
+  });
+  w.role = prev;
+  if (!permitted.length || permitted.length===ACT_LANES.length) return listed;
+  const out = permitted.slice();
+  listed.forEach(i => { if (out.indexOf(i)<0) out.push(i); });
+  return out.sort((x,y) => laneRank(x)-laneRank(y));
+}
+function boardState(w, ctx){
+  const prev = w.role, cols = [];
+  const colFor = laneIds => {
+    const world = !laneIds.length;
+    const key = world ? "WORLD" : laneIds.join("+");
+    let c = cols.find(x => x.key===key);
+    if (c) return c;
+    const lanes = world ? [LANES.find(L => L.world)]
+                        : laneIds.map(i => LANES.find(L => L.id===i));
+    cols.push(c = {key, laneIds:laneIds.slice(), lanes, world,
+      label:setLabel(laneIds), avail:[], blocked:[], hidden:[]});
+    return c;
+  };
+  const file = (c, e) => {
+    e.col = c;
+    (e.res.t==="A" ? c.avail : e.res.t==="D" ? c.blocked : c.hidden).push(e);
+  };
+
+  Object.keys(WORLD).forEach(id => {
+    w.role = prev;
+    file(colFor([]), {id, a:WORLD[id], res:treat(WORLD[id].gate(w, ctx))});
+  });
+  Object.keys(ACTIONS).forEach(id => {
+    const a = ACTIONS[id];
+    /* The same action can get a different answer from person to person, and a
+       permission gate is exactly when it does: available in the column of
+       whoever may take it, and still listed — blocked — for the actor the
+       flows document names, because that is where the escalation has to read
+       (finding F18). Group the eligible people by the answer they get, and
+       each group is a column. */
+    const buckets = [];
+    eligibleLanes(w, ctx, a).forEach(r => {
+      w.role = r;
+      const res = treat(a.gate(w, ctx));
+      const k = res.t + "|" + (res.why||"");
+      let b = buckets.find(x => x.k===k);
+      if (!b) buckets.push(b = {k, res, lanes:[]});
+      b.lanes.push(r);
+    });
+    w.role = prev;
+    buckets.forEach(b => file(colFor(b.lanes), {id, a, res:b.res}));
+  });
+  w.role = prev;
 
   /* who is each blocked action waiting on? */
   const availIn = {};
-  lanes.forEach(L => L.avail.forEach(e => { availIn[e.id] = L; }));
-  lanes.forEach(L => L.blocked.forEach(e => {
+  cols.forEach(c => c.avail.forEach(e => { if (!availIn[e.id]) availIn[e.id] = c; }));
+  cols.forEach(c => c.blocked.forEach(e => {
     const cands = clearedBy(e.res.why);
     const readyId = cands.find(cid => availIn[cid]);
-    if (readyId) e.waitOn = {id:readyId, lane:availIn[readyId], ready:true};
+    if (readyId) e.waitOn = {id:readyId, who:availIn[readyId].label,
+      lanes:availIn[readyId].laneIds, ready:true};
     else if (e.res.why===WHY.ROLE) e.waitOn = {permission:true, roleName:whoCan(w, e.id)};
     else if (cands.length){
-      const ownerId = cands.map(cid => ACTIONS[cid] && laneOfAction(ACTIONS[cid])).find(Boolean);
-      e.waitOn = {id:cands[0], lane:find(ownerId), ready:false};
+      const owner = cands.map(cid => ACTIONS[cid] && eligibleLanes(w, ctx, ACTIONS[cid]))
+        .find(l => l && l.length) || [];
+      e.waitOn = {id:cands[0], who:setLabel(owner), lanes:owner, ready:false};
     }
   }));
-  /* and what does each available action unblock for somebody else? */
-  lanes.forEach(L => L.avail.forEach(e => {
-    e.unblocks = []; e.thenYou = [];
-    lanes.forEach(M => M.blocked.forEach(b => {
+  /* and what does each available action free up? Whether that reads as a
+     handoff or as this person's own sequencing depends on who is acting —
+     which is a render-time question when a column is more than one person,
+     so record the fact here and split it there. */
+  cols.forEach(c => c.avail.forEach(e => {
+    e.frees = [];
+    cols.forEach(m => m.blocked.forEach(b => {
       if (!(b.waitOn && b.waitOn.ready && b.waitOn.id===e.id)) return;
-      /* Cross-lane is the fact that matters: somebody else is held up. Same
-         lane is only this person's own sequencing — worth saying, not the
-         same thing. */
-      (M.id===L.id ? e.thenYou : e.unblocks).push({lane:M, id:b.id});
+      if (!e.frees.some(x => x.id===b.id)) e.frees.push({col:m, id:b.id});
     }));
   }));
-  return lanes;
+  return cols;
 }
+
+/* Which column is acting, when a column is more than one person. Stored per
+   column so the event log gets a real actor rather than "the first one". */
+let AS_PICK = {};
+const actingAs = c => c.world ? "WORLD"
+  : (c.laneIds.indexOf(AS_PICK[c.key])>=0 ? AS_PICK[c.key] : c.laneIds[0]);
 
 function renderActions(){
   const w = W, c = ctxOf(w);
-  const lanes = boardState(w, c);
+  const cols = boardState(w, c);
   const nextIds = openSteps().flatMap(i => {
     const d = SCEN.script[i].do; return Array.isArray(d) ? d : [d];
   });
-  const STANDING0 = ["MARK_OUT_OF_SERVICE","RETURN_TO_SERVICE","ADJUST_STATE",
+  /* Always possible regardless of state, so they are never the thing anyone is
+     waiting for. Shown compactly or the supervisor's column reads as the
+     busiest on the board. */
+  const STANDING = new Set(["MARK_OUT_OF_SERVICE","RETURN_TO_SERVICE","ADJUST_STATE",
     "CORRECT_TRAILER_IDENTITY","MERGE_TRAILERS","TURN_AWAY","BIND_TRAILER_TO_LEG",
-    "RECORD_ARRIVAL","REGISTER_AND_ADMIT"];
-  const realWork = L => L.avail.some(e => !STANDING0.includes(e.id) || e.unblocks.length ||
-    nextIds.includes(e.id));
-  const canAct   = lanes.filter(L => realWork(L) && !L.world);
-  const waiting  = lanes.filter(L => !realWork(L) && L.blocked.length && !L.world);
-  const blockers = canAct.filter(L => L.avail.some(e => e.unblocks.length));
-  const nm = L => esc(L.label.toLowerCase());
+    "RECORD_ARRIVAL","REGISTER_AND_ADMIT"]);
+  const isStd = e => STANDING.has(e.id) && !e.unblocks.length && !nextIds.includes(e.id);
+  cols.forEach(x => {
+    /* The same action is a handoff to whoever cannot take the next step and
+       plain sequencing to whoever can, so it is the person acting — not the
+       column — that decides which of the two it reads as. */
+    const as = actingAs(x);
+    x.avail.forEach(e => {
+      e.unblocks = e.frees.filter(u => u.col.laneIds.indexOf(as)<0);
+      e.thenYou  = e.frees.filter(u => u.col.laneIds.indexOf(as)>=0);
+    });
+    x.std  = x.avail.filter(isStd);
+    x.live = x.avail.filter(e => !isStd(e));
+  });
+
+  const work = cols.filter(x => !x.world && x.live.length);
+  const people = [];
+  work.forEach(x => x.laneIds.forEach(i => { if (people.indexOf(i)<0) people.push(i); }));
+  people.sort((a,b) => laneRank(a)-laneRank(b));
+  const waitCols = cols.filter(x => !x.world && !x.live.length && x.blocked.length);
+  const blockers = work.filter(x => x.live.some(e => e.unblocks.length));
+  const shared   = work.filter(x => x.laneIds.length>1);
+  const pname = i => esc(setLabel([i]));
 
   let head;
-  if (!canAct.length)
+  if (!people.length)
     head = '<b>Nobody can act.</b> Everything here is waiting on something off the board.';
-  else if (canAct.length===1)
-    head = '<b>Only the '+nm(canAct[0])+' can act.</b>' +
-      (waiting.length ? ' '+waiting.map(L=>esc(L.label)).join(", ")+
-        (waiting.length===1?' is':' are')+' waiting on them — this stretch is a queue, not parallel work.' : '');
+  else if (people.length===1)
+    head = '<b>Only the '+pname(people[0]).toLowerCase()+' can act.</b>' +
+      (waitCols.length ? ' '+waitCols.map(x=>esc(x.label)).join(", ")+
+        (waitCols.length===1?' is':' are')+
+        ' waiting on them — this stretch is a queue, not parallel work.' : '');
   else
-    head = '<b>'+canAct.length+' people can act right now, in parallel</b> — '+
-      canAct.map(L=>esc(L.label)).join(", ")+'. ' +
+    head = '<b>'+people.length+' people can act right now, in parallel</b> — '+
+      people.map(pname).join(", ")+'. ' +
       (blockers.length
-        ? blockers.map(L=>esc(L.label)).join(" and ")+
-          (blockers.length===1?' holds':' hold')+' something another lane is waiting on; the rest are independent.'
+        ? blockers.map(x=>esc(x.label)).join(" and ")+
+          (blockers.length===1?' holds':' hold')+
+          ' something another column is waiting on; the rest are independent.'
         : 'None of them holds anyone up, so any order will do.');
+  if (shared.length)
+    head += ' <span class="shn">'+
+      (shared.length===1
+        ? esc(shared[0].label)+' share a column: any of them may take those actions, and it '+
+          'makes no difference which.'
+        : shared.length+' columns are shared — '+shared.map(x=>esc(x.label)).join("; ")+
+          ' — because any of the people named may take those actions, and it makes no '+
+          'difference which.')+'</span>';
 
-  const chip = e =>
+  const chip = (e, as) =>
     '<button type="button" class="la'+(nextIds.includes(e.id)?" next":"")+
-      (e.unblocks.length?" blk":"")+'" data-act="'+e.id+'" data-as="'+e.lane.id+'">'+
+      (e.unblocks.length?" blk":"")+'" data-act="'+e.id+'" data-as="'+as+'">'+
     '<span class="lan">'+esc(e.a.label)+'</span>'+
     (nextIds.includes(e.id) ? '<span class="lat">the scripted next step</span>' : '') +
     (e.unblocks.length
-      ? '<span class="unb">unblocks '+e.unblocks.map(u => esc(u.lane.label)+' · '+
+      ? '<span class="unb">unblocks '+e.unblocks.map(u => esc(u.col.label)+' · '+
           esc((ACTIONS[u.id]||{}).label||u.id).toLowerCase()).join(", ")+'</span>'
       : e.thenYou.length
         ? '<span class="dep">then you can '+
           e.thenYou.map(u => esc((ACTIONS[u.id]||{}).label||u.id).toLowerCase()).join(", ")+'</span>'
         : '') + '</button>';
 
-  const blockedRow = e => {
+  const blockedRow = (e, as) => {
     const o = e.waitOn;
+    /* Matrix §1.1 wants a reason that names a step the reader can take. If the
+       step is one the reader can take, say so as their own next step — telling
+       the dispatcher they are waiting on the dispatcher is worse than useless. */
+    const mine = o && o.lanes && o.lanes.indexOf(as)>=0;
+    const named = o && o.id ? esc((ACTIONS[o.id]||{}).label||o.id).toLowerCase() : "";
     const tail = !o ? esc(e.res.why||"")
       : o.permission ? 'needs a <b>'+esc(o.roleName)+'</b>'
-      : o.ready ? 'waiting on <b>'+esc(o.lane.label)+'</b> to '+
-          esc((ACTIONS[o.id]||{}).label||o.id).toLowerCase()
-      : 'waiting on <b>'+esc(o.lane?o.lane.label:"someone")+'</b> — '+esc(e.res.why||"");
+      : mine ? 'you have to '+named+' first'+(o.ready ? '' : ' — '+esc(e.res.why||""))
+      : o.ready ? 'waiting on <b>'+esc(o.who)+'</b> to '+named
+      : 'waiting on <b>'+esc(o.who||"someone")+'</b> — '+esc(e.res.why||"");
     return '<div class="lb"><span class="lbn">'+esc(e.a.label)+'</span>'+
       '<span class="dep">'+tail+'</span></div>';
   };
 
-  /* Always possible regardless of state, so they are never the thing anyone is
-     waiting for. Shown compactly or a supervisor lane reads as the busiest on
-     the board. */
-  const STANDING = new Set(["MARK_OUT_OF_SERVICE","RETURN_TO_SERVICE","ADJUST_STATE",
-    "CORRECT_TRAILER_IDENTITY","MERGE_TRAILERS","TURN_AWAY","BIND_TRAILER_TO_LEG",
-    "RECORD_ARRIVAL","REGISTER_AND_ADMIT"]);
-  const laneCard = L => {
-    const std = L.avail.filter(e => STANDING.has(e.id) && !e.unblocks.length &&
-      !nextIds.includes(e.id));
-    const live = L.avail.filter(e => !std.includes(e));
-    const state = live.length ? "can" : (L.blocked.length ? "wait" : (std.length ? "std" : "idle"));
-    const blocking = live.some(e => e.unblocks.length);
-    return '<div class="lane2 '+state+'"><h4><span class="rn">'+esc(L.label)+'</span>'+
-      (L.avail.some(e=>nextIds.includes(e.id)) ? '<span class="bdg a">next</span>' : '')+
+  const card = x => {
+    const as = actingAs(x);
+    const state = x.live.length ? "can"
+      : (x.blocked.length ? "wait" : (x.std.length ? "std" : "idle"));
+    const blocking = x.live.some(e => e.unblocks.length);
+    return '<div class="lane2 '+state+(x.laneIds.length>1?" shared":"")+'"><h4>'+
+      '<span class="rn">'+esc(x.label)+'</span>'+
+      (x.laneIds.length>1 ? '<span class="bdg b">'+
+        (x.laneIds.length===2 ? 'either' : 'any of '+x.laneIds.length)+'</span>' : '')+
+      (x.avail.some(e=>nextIds.includes(e.id)) ? '<span class="bdg a">next</span>' : '')+
       (blocking ? '<span class="bdg r">blocking</span>' : '')+
       (state==="can" && !blocking ? '<span class="bdg g">independent</span>' : '')+
       (state==="wait" ? '<span class="bdg m">waiting</span>' : '')+
       (state==="std" ? '<span class="bdg m">overrides only</span>' : '')+
       '</h4><div class="body2">'+
-      live.map(chip).join("") +
-      (std.length ? '<div class="stds">'+std.map(e =>
-        '<button type="button" class="la std" data-act="'+e.id+'" data-as="'+e.lane.id+
+      (x.laneIds.length>1 && x.live.length
+        ? '<div class="who">acting as '+x.laneIds.map(i =>
+            '<button type="button" class="whob'+(i===as?" on":"")+'" data-pick="'+x.key+
+            '" data-lane="'+i+'">'+pname(i)+'</button>').join("")+'</div>'
+        : '') +
+      x.live.map(e => chip(e, as)).join("") +
+      (x.std.length ? '<div class="stds">'+x.std.map(e =>
+        '<button type="button" class="la std" data-act="'+e.id+'" data-as="'+as+
         '"><span class="lan">'+esc(e.a.label)+'</span></button>').join("")+'</div>' : "") +
-      (L.blocked.length ? '<div class="lbs">'+L.blocked.slice(0,3).map(blockedRow).join("")+
-        (L.blocked.length>3 ? '<div class="dep">and '+(L.blocked.length-3)+
+      (x.blocked.length ? '<div class="lbs">'+x.blocked.slice(0,3)
+        .map(e => blockedRow(e, as)).join("")+
+        (x.blocked.length>3 ? '<div class="dep">and '+(x.blocked.length-3)+
           ' more blocked here</div>' : '')+'</div>' : "") +
-      (!L.avail.length && !L.blocked.length ? '<span class="dep">nothing to do</span>' : "") +
-      (SHOW_HIDDEN && L.hidden.length ? '<div class="lbs">'+L.hidden.map(e =>
+      (!x.avail.length && !x.blocked.length ? '<span class="dep">nothing to do</span>' : "") +
+      (SHOW_HIDDEN && x.hidden.length ? '<div class="lbs">'+x.hidden.map(e =>
         '<div class="lb"><span class="lbn" style="color:var(--mute)">'+esc(e.a.label)+
         '</span><span class="dep">hidden — '+esc(e.res.why||"")+'</span></div>').join("")+
         '</div>' : "") +
       '</div></div>';
   };
 
-  const shown = lanes.filter(L => L.avail.length || L.blocked.length || (SHOW_HIDDEN && L.hidden.length));
-  const idle  = lanes.filter(L => !shown.includes(L));
+  const shown = cols.filter(x => x.live.length || x.std.length || x.blocked.length ||
+      (SHOW_HIDDEN && x.hidden.length))
+    .sort((p,q) => (p.world?1:0)-(q.world?1:0) ||
+      laneRank(p.laneIds[0])-laneRank(q.laneIds[0]) ||
+      p.laneIds.length-q.laneIds.length);
+  const busy = {};
+  shown.forEach(x => x.laneIds.forEach(i => { busy[i] = true; }));
+  const idle = ACT_LANES.filter(i => !busy[i]);
+
   $("#actions").innerHTML =
     '<div class="note">'+head+'</div>' +
-    '<div class="board">'+shown.map(laneCard).join("")+'</div>' +
-    (idle.length ? '<p class="hidnote">Nothing for: '+idle.map(L=>esc(L.label)).join(", ")+'.</p>' : '') +
-    '<p class="hidnote">Clicking an action performs it as that person. A step appears only '+
-    'in the lane of whoever is permitted to take it, so a permission gate reads as '+
-    '“someone else’s job” rather than as a refusal. Lanes are inferred from each '+
-    'action’s actor, because no document defines a role → action matrix (finding F19).</p>';
+    '<div class="board">'+shown.map(card).join("")+'</div>' +
+    (idle.length ? '<p class="hidnote">Nothing for: '+idle.map(pname).join(", ")+'.</p>' : '') +
+    '<p class="hidnote">A column is everyone who can take exactly these actions, so an '+
+    'action two people may both take is written once and not twice — pick who does it with '+
+    '<i>acting as</i>. Clicking an action performs it as that person, which is why a '+
+    'permission gate reads as “someone else’s job” rather than as a refusal. Who belongs '+
+    'where is read from the engine’s permission gates where there are any, and otherwise '+
+    'inferred from each action’s actor, because no document defines a role → action '+
+    'matrix (finding F19).</p>';
 }
-
 /* ---- script ------------------------------------------------------------ */
 /* A flow is not one line after the handoff. Steps carry a `track`; "main" is a
    barrier — every earlier step must be done before a main step opens — while
@@ -4076,6 +4226,9 @@ function renderActions(){
    the driver can check out while the trailer is being loaded, in either order,
    and neither is going off script. Finding F16. */
 const trackOf = s => s.track || "main";
+/* A step's text is written with **emphasis** on the thing being tested; it was
+   being escaped and shown as asterisks. */
+const say = t => esc(t||"").replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
 const stepDone = i => !!(SCEN._results[i] && SCEN._results[i].status);
 function openSteps(){
   if (!SCEN) return [];
@@ -4121,7 +4274,7 @@ function renderSteps(){
     const tl = TRACK_LABEL[trackOf(s)];
     return '<div class="'+cls.join(" ")+'">' +
       '<span class="sid">'+esc(s.id)+(tl?'<span class="trk-tag">'+esc(tl)+'</span>':'')+'</span>' +
-      '<span class="sy">'+esc(s.says)+(s.optional?' <i style="color:var(--steel)">(optional)</i>':'')+'<br>' +
+      '<span class="sy">'+say(s.says)+(s.optional?' <i style="color:var(--steel)">(optional)</i>':'')+'<br>' +
         '<span class="who">'+esc(s.actor)+' · '+ids.map(idt).join(" or ")+
         (act && act.engine ? ' <b style="color:var(--bad)">ENGINE</b>' : '')+'</span> ' +
         '<span class="ref">'+esc(s.ref||"")+'</span></span>' +
@@ -4608,6 +4761,8 @@ function openConfig(){
 document.addEventListener("click", e => {
   const sc = e.target.closest("[data-scen]");
   if (sc){ loadScenario(sc.dataset.scen, true); return; }
+  const pk = e.target.closest("[data-pick]");
+  if (pk){ AS_PICK[pk.dataset.pick] = pk.dataset.lane; renderActions(); return; }
   const ac = e.target.closest("[data-act]");
   if (ac && !ac.disabled){
     if (ac.dataset.as && ac.dataset.as!=="WORLD") W.role = ac.dataset.as;
