@@ -1,8 +1,11 @@
 # Glossary — Canonical Terms
 
-**Companion to:** `yard-dock-operations-model.md` v0.23, `action-availability-matrix.md` v0.13
-**Status:** Draft v0.7 — `EXPECTED_FREIGHT_MISSING`
+**Companion to:** `yard-dock-operations-model.md` v0.23, `action-availability-matrix.md` v0.14
+**Status:** Draft v0.8 — the fill-declaration wording, resolved
 **Purpose:** The single source of truth for every entity, state, action, flag, and label. When this document and another disagree, this one is wrong and should be corrected — but until it is, it is what the product, the training material, and support should say.
+
+### Changes from v0.7
+- **Naming item §11 #4 resolved.** "Declare fill complete" as user-facing copy is retired; the displayed wording distinguishes the load declaration from the per-shipment session outcomes, which are two confirmations by two people that sounded like one thing.
 
 ### Changes from v0.6
 - **`EXPECTED_FREIGHT_MISSING` added** (§7). There was a flag for freight aboard that was not expected and none for freight expected that was not aboard.
@@ -274,7 +277,7 @@ Computed, never stored. Internal name → what a user sees.
 | `DROPPED_NO_DESTINATION` | "Dropped — no dock" | No tractor, no destination. **Your problem, unassigned** |
 | `READY_TO_PULL` | "Ready to pull" | Work finished at a dock |
 | `BLOCKING_DOCK` | "Blocking dock" | Ready to pull, and the dock is needed |
-| `ACCEPTING_FREIGHT` | "Open — accepting" | Has freight, fill still `OPEN` |
+| `ACCEPTING_FREIGHT` | "Open — accepting" | Has freight, fill still `OPEN` — displayed as "the load is not declared complete", never as "not loaded": the freight may all be aboard and recorded (§11 #4) |
 | `READY_TO_DEPART` | "Ready to depart" | Matches its leg **in both directions**, fill complete, sealed, **and the driver has it** — one he dropped is waiting for a later visit, not ready to go |
 | `PRELOAD_STAGED` | "Staged" | Loaded, sealed, awaiting pickup |
 | `STAGED_AGING` | "Staged — aging" | Staged too long, or its pickup no-showed |
@@ -375,4 +378,4 @@ What people say → what the system calls it.
 1. ~~`CLEAR_VISIT` → `AUTHORIZE_DEPARTURE`~~ — **applied in v0.4.** The state `CLEARED` became `AUTHORIZED_TO_DEPART` and `DEPARTED_WITHOUT_CLEARANCE` became `DEPARTED_WITHOUT_AUTHORIZATION`. No identifier now contains "clear".
 2. **`AT_GATE_IN` / `AT_GATE_OUT`** read as jargon. "Inbound apron" and "exit lane" are what staff would say. Worth considering for labels, though the internal names are fine.
 3. **`PART_LOADED`** versus "partially loaded." The abbreviation saves nothing and reads like a typo.
-4. **`fill_declaration`** is precise but stilted. "Load complete" is what a dock lead would say, and the label should probably differ from the field name (§1.1).
+4. ~~**`fill_declaration`** is precise but stilted~~ — **resolved in v0.8.** The field keeps its name; the *displayed* wording is now "the load has been declared complete", and the blocked reason is "The load has not been declared complete" rather than "Declare fill complete first" (matrix §3.3). The old string read as though the loading itself were unconfirmed, which collided with the per-shipment session outcomes — a different confirmation, made by a different person. A gate clerk who had just recorded every shipment `LOADED` was told the load was not confirmed, by a control that could not tell him a dock lead had to do it.

@@ -1,8 +1,14 @@
 # Action Availability Matrix
 
 **Companion to:** `yard-dock-operations-model.md` v0.23
-**Status:** Draft v0.13 — two primary slots; the missing half of the freight check
+**Status:** Draft v0.14 — a reason must name a step the reader can take
 **Purpose:** For any trailer in any state, define which actions appear, which appear disabled, which are hidden, and what the user is told — so a screen can be built without re-deriving preconditions from the action catalog.
+
+### Changes from v0.13
+Reported from running the outbound preload as a gate clerk, which dead-ends three actions deep with no cause on screen.
+- **§1.1 extended:** a reason must name a clearing action *this reader* can perform. Where the clearing action is role-gated away from them, the reason names the role that must do it — and §3.4's ban on naming roles is narrowed to the first-order permission block it was written for.
+- **§1.7 caveat:** a derived primary must not silently route around a step the reader cannot perform, which is what produced the dead end.
+- **§3.3 copy:** "Declare fill complete first" → "The load has not been declared complete". The old string read as though the loading were unconfirmed, when the per-shipment outcomes had already confirmed it.
 
 ### Changes from v0.12
 - **Two primary slots** (§1.6) — the driver's next step and the facility's. Model §10.14: after the handoff they are concurrent, and one slot cannot show both.
@@ -83,6 +89,12 @@ Worked examples, since the rule is a judgment and examples are how it gets appli
 
 **Permission is a "yes."** "Not permitted for your role" names a next step — find a supervisor — even though the step is outside the software. Permission-blocked actions therefore show disabled, which also keeps the escalation path visible.
 
+**But the reason must name a step *this reader* can take.** The rule above silently assumes the clearing action is one the reader could perform. When it is not, the breadcrumb points at a door they cannot open — and the escalation this section is proud of keeping visible becomes invisible exactly where it is needed. A gate clerk who ends a load session, with every shipment `LOADED`, then meets "declare fill complete first" on sealing, on authorization, and finally "visit is not authorized to depart" at the gate: three blocked controls, no cause on screen, and the one action that would clear them is role-gated away from him.
+
+So: **when the clearing action named in a reason is blocked for the current role and otherwise ready, the reason says who must clear it** — "the load has not been declared complete — a dock lead has to declare it". This does not contradict §3.4's refusal to name a role on a *permission* block. There the role is unknown to the screen and a guess would mislead; here it is read straight out of the effective config (`roles_can_declare_fill_complete`), so it is a fact.
+
+**And a derived primary must not quietly route around it.** §1.7 picks the highest-priority *available* action, so a role-gated step simply vanishes from the suggestion and the user is steered past it — which is how the dead end above is reached without ever seeing a refusal. Where an action is otherwise ready and waiting only on another role, say so alongside the primary rather than skipping it in silence.
+
 ### 1.2 Never enabled-then-error
 
 A blocked action is **disabled, with its reason readable without interaction** — inline, or on hover/tap-and-hold. An enabled control that produces an error when used is not permitted anywhere in this system. The user should never have to click something to discover they could not.
@@ -117,6 +129,8 @@ If more than three disabled controls would show, keep the three highest by §1.3
 Supervisor actions never sit adjacent to routine ones. They are the actions that write history nobody can fully trust, and physical separation is a cheap control.
 
 ### 1.7 The primary action is derived, not configured
+
+The primary is the highest-priority action that is **available**, which means a step the reader cannot perform disappears from the suggestion entirely and they are steered past it. That is how a gate clerk reaches the gate blocked on a load declaration nobody told him he could not make. **Where an action is otherwise ready and waiting only on another role, surface it beside the primary rather than skipping it in silence** (§1.1).
 
 | Situation | Primary action |
 |---|---|
@@ -315,7 +329,7 @@ All three are **D**: each has a clearing action available to someone present.
 | Condition | Treatment | Reason shown |
 |---|---|---|
 | Session has no shipment | D | "Add at least one shipment" |
-| `fill_declaration = OPEN` | D | "Declare fill complete first" |
+| `fill_declaration = OPEN` | D | "The load has not been declared complete" — **plus "— a *role* has to declare it" when that role is not the reader's** (§1.1). Deliberately not "declare fill complete first", which reads as though the loading itself were unconfirmed; the per-shipment session outcomes are a different confirmation, made by a different person (glossary §11 #4) |
 | `fill_declaration = COMPLETE` blocking assignment | D | "Fill is declared complete — reopen fill to add freight" |
 | `PART_LOADED` row exists | D | "Resolve the part-loaded shipment first" |
 | Not sealed | D | "Seal the trailer first" |
@@ -339,6 +353,8 @@ All three are **D**: each has a clearing action available to someone present.
 | `DECLARE_TAKE_LEG_CHANGE` with a loaded substitute | Supervisor |
 
 Reason shown: **"Not permitted for your role"** — never naming which role, since that varies by facility (§9 #25) and a wrong hint is worse than none.
+
+**The exception is a second-order block** (§1.1): when action A is blocked because action B has not happened, and B is role-gated away from this reader, A's reason *does* name B's role. The difference is that the role is then read from the effective config rather than guessed, and without it the reader has no path at all.
 
 ---
 

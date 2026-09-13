@@ -66,8 +66,8 @@ Five things that, if lost, make the rest incoherent:
 |---|---|---|
 | yard-dock-operations-model.md | v0.23 | ~163 KB |
 | flows.md | v0.7 | ~25 KB |
-| action-availability-matrix.md | v0.13 | ~30 KB |
-| glossary.md | v0.7 | ~19 KB |
+| action-availability-matrix.md | v0.14 | ~32 KB |
+| glossary.md | v0.8 | ~20 KB |
 
 **38 decisions resolved. 14 items open** (model §10). The model is decided enough to build.
 
@@ -94,7 +94,7 @@ what they simply do not know about.
 
 - **The model document is too large.** At ~163 KB it is past the size where a sequential edit can silently delete a section — this has already happened once. It should be split into domain model, decision log, and UI spec. The v0.21 round was edited by targeted replacement only, and §10 has grown since.
 - **Four documents will drift.** Nothing enforces consistency. The glossary is designated the tiebreaker, which only works if it is the document people actually open.
-- ~~`CLEAR_VISIT` naming inconsistency~~ — **resolved in v0.20**: renamed `AUTHORIZE_DEPARTURE`. Three naming items remain open in glossary §11.
+- ~~`CLEAR_VISIT` naming inconsistency~~ — **resolved in v0.20**: renamed `AUTHORIZE_DEPARTURE`. ~~`fill_declaration` wording~~ — **resolved in glossary v0.8**. Two naming items remain open in glossary §11.
 
 ### Before writing code
 

@@ -1,6 +1,6 @@
 # Operational Flows — States, Flags, and Actions by Step
 
-**Companion to:** `yard-dock-operations-model.md` v0.23, `action-availability-matrix.md` v0.13, `glossary.md` v0.7
+**Companion to:** `yard-dock-operations-model.md` v0.23, `action-availability-matrix.md` v0.14, `glossary.md` v0.8
 **Status:** Draft v0.7 — the two tracks after a handoff
 **Purpose:** Walk each appointment type from start to finish, showing at every step which states change, which flags can appear, which actions are available, and who acts.
 

@@ -412,7 +412,7 @@ dialog footer{padding:11px 15px; border-top:1px solid var(--line); display:flex;
 <header class="top">
   <span class="brand">
     <b>Yard Flow Bench</b>
-    <span>Walks the yard &amp; dock document set against itself — model v0.23 · flows v0.7 · matrix v0.13 · glossary v0.7</span>
+    <span>Walks the yard &amp; dock document set against itself — model v0.23 · flows v0.7 · matrix v0.14 · glossary v0.8</span>
   </span>
   <span class="topctl">
     <label for="role">Acting as</label>
@@ -552,7 +552,7 @@ const WHY = {
   MOVE_OPEN:"A move is already open for this trailer",
   NOT_ADMITTED:"Admit the visit first",
   NO_SHIPMENT_IN_SESSION:"Add at least one shipment",
-  FILL_OPEN:"Declare fill complete first",
+  FILL_OPEN:"The load has not been declared complete",
   FILL_COMPLETE:"Fill is declared complete — reopen fill to add freight",
   PART_LOADED:"Resolve the part-loaded shipment first",
   NOT_SEALED:"Seal the trailer first",
@@ -1096,6 +1096,33 @@ function matrixSays(id, w, ctx){
   return MATRIX_21[id][ctx.v.presence] || null;
 }
 
+/* Is this action otherwise ready, and blocked ONLY because of who is asking?
+   Then it is somebody's next step, just not yours. */
+function roleBlockedOnly(w, ctx, id){
+  const a = ACTIONS[id]; if (!a) return false;
+  const fails = a.gate(w, ctx);
+  return fails.length>0 && fails.every(f => f.cls===CLS.PERMISSION);
+}
+/* Matrix §1.1 assumes the clearing action named in a reason is one the reader
+   can perform. When it is not, the breadcrumb points at a door they cannot
+   open. §3.4 forbids naming a role for a *permission* block because the role
+   varies by facility — but here it is read straight out of the effective
+   config, so it is a fact rather than a hint. Finding F18. */
+function whoCan(w, id){
+  const key = {DECLARE_FILL_COMPLETE:"roles_can_declare_fill_complete",
+               CANCEL_SESSION:"roles_can_override_session_outcome",
+               RESOLVE_IDENTIFICATION:"roles_can_resolve_identification"}[id];
+  const list = key ? (w.config[key]||[]) : ["SUPERVISOR"];
+  const first = list[0];
+  const label = (ROLES.find(r => r.id===first)||{}).label || "someone else";
+  return label.toLowerCase();
+}
+function escalate(w, ctx, clearingAction, why){
+  return roleBlockedOnly(w, ctx, clearingAction)
+    ? why + " — a " + whoCan(w, clearingAction) + " has to declare it"
+    : why;
+}
+
 /* ---- shared condition sets -------------------------------------------- */
 function svc(w,t){
   const o = [];
@@ -1398,7 +1425,7 @@ AUTHORIZE_DEPARTURE:{
       if (rows.some(r => r.link_state==="PART_LOADED")) f.push(D(CLS.DATA, WHY.PART_LOADED));
       const outboundAboard = rows.some(r => r.direction==="OUTBOUND" && r.link_state==="ON_BOARD");
       if (outboundAboard){
-        if (t.fill!=="COMPLETE") f.push(D(CLS.DATA, WHY.FILL_OPEN));
+        if (t.fill!=="COMPLETE") f.push(D(CLS.DATA, escalate(w,c,"DECLARE_FILL_COMPLETE",WHY.FILL_OPEN)));
         else if (!t.sealed){
           if (v.party_type==="COMPANY_DRIVER")
             log0("Seal ceremony relaxed for a company driver (model §5.1) — the load match is not.");
@@ -2193,7 +2220,7 @@ SEAL_TRAILER:{
     if (!rowsOf(w,t.id).some(r => r.link_state==="ON_BOARD"))
       return [H(CLS.DATA,"No freight aboard — not a sealing candidate")];
     const f = svc(w,t);
-    if (t.fill!=="COMPLETE") f.push(D(CLS.DATA, WHY.FILL_OPEN));
+    if (t.fill!=="COMPLETE") f.push(D(CLS.DATA, escalate(w,c,"DECLARE_FILL_COMPLETE",WHY.FILL_OPEN)));
     if (rowsOf(w,t.id).some(r => r.link_state==="PART_LOADED")) f.push(D(CLS.DATA, WHY.PART_LOADED));
     const s = openSession(w,t.id);
     if (s && s.state==="ACTIVE") f.push(D(CLS.PHYSICAL, WHY.SESSION_ACTIVE));
@@ -3561,7 +3588,10 @@ const SEEDED = [
  refs:"flows §1.1 · flows §12 · matrix §1.6 · model §3.5 · model §10.13"},
 {id:"F17", sev:"gap", title:"The primary-action table has no row for sealing at a dock",
  body:"Matrix §1.7 derives the primary action from state, and lists \u201cIn yard, loaded, fill complete, unsealed \u2192 <span class=\"id\">SEAL_TRAILER</span>\u201d. There is no equivalent row for the same trailer <i>at a dock</i> \u2014 which is where sealing actually happens: flows §4 P4d declares fill complete and seals with the trailer still on the dock, before it moves anywhere. With the table read literally, the suggestion after fill-complete is <span class=\"id\">PULL_FROM_DOCK</span>, so the recommended next step is to pull an unsealed load off the dock. Small, and exactly the kind of omission a derived-primary table hides until someone walks it.",
- refs:"matrix §1.7 · matrix §2.5 · flows §4 P4d"}
+ refs:"matrix §1.7 · matrix §2.5 · flows §4 P4d"},
+{id:"F18", sev:"blocks", title:"A blocked reason can point at a door the reader cannot open",
+ body:"<b>Reported from running the preload as the default gate clerk.</b> End the session with both shipments <span class=\"id\">LOADED</span> — the loading is confirmed, per shipment, by the person who did it. Then:<br><br><span class=\"id\">DECLARE_FILL_COMPLETE</span> \u2192 \u201cNot permitted for your role\u201d. <span class=\"id\">SEAL_TRAILER</span> \u2192 \u201cDeclare fill complete first\u201d. <span class=\"id\">AUTHORIZE_DEPARTURE</span> \u2192 \u201cDeclare fill complete first\u201d. <span class=\"id\">CHECK_OUT</span> \u2192 \u201cVisit is not authorized to depart\u201d. A dead end three actions deep, and nothing on the screen says why.<br><br>Matrix §1.1's whole test is \u201cdoes the reason name a plausible next step?\u201d, and a disabled control is justified as \u201ca breadcrumb that teaches sequencing\u201d. It never considers that the named clearing action may be <b>unavailable to this reader</b>. §1.1 even argues permission blocks should stay visible to \u201ckeep the escalation path visible\u201d — but only on the action itself, never on the actions blocked <i>because</i> of it, which is exactly where the escalation is needed.<br><br>Two things made it worse. The copy: \u201cdeclare fill complete\u201d and the per-shipment session outcome are two different confirmations that sound like one, which glossary §11 item 4 had already flagged and left open. And the derived primary (matrix §1.7) <b>routes around</b> a step you cannot perform — after the session ended it suggested <span class=\"id\">PULL_FROM_DOCK</span>, walking the user straight past the thing that would block them later.<br><br>Fixed three ways: the reason now names who must clear it, read from <span class=\"id\">roles_can_declare_fill_complete</span> rather than guessed; the copy distinguishes the two confirmations; and the console says out loud when an action is ready but waiting on another role.",
+ refs:"matrix §1.1 · matrix §3.3 · matrix §3.4 · matrix §1.7 · glossary §11 #4 · model §9 #13"}
 ];
 const SEV = {
   blocks:{l:"Blocks a flow", t:"r"}, contradiction:{l:"Documents disagree", t:"r"},
@@ -3587,7 +3617,8 @@ const APPLIED = {
   F14:"model v0.22 §4, §5.1, §2.4, §2.5 · matrix v0.12 §2.6 · flows v0.6 §6a · glossary v0.6 §2 — the pattern is now separated and walkable; §10.13 holds what is left to decide",
   F15:"model v0.23 §5.1 and §6.1 · matrix v0.13 §3.3 · glossary v0.7 §7",
   F16:"flows v0.7 §1.1 and §12 · matrix v0.13 §1.6 — and the bench now runs the two tracks",
-  F17:"matrix v0.13 §1.7"
+  F17:"matrix v0.13 §1.7",
+  F18:"matrix v0.14 §1.1, §3.3 and §3.4 · glossary v0.8 §7 and §11"
 };
 SEEDED.forEach(f => { if (APPLIED[f.id]) f.fixed = APPLIED[f.id]; });
 
@@ -3807,6 +3838,18 @@ function renderActions(){
     slot("Primary · the driver", "whoever has the trailer", con.primDriver) +
     slot("Primary · the facility", "the people who do not", con.primFacility) +
     '</div>' +
+    (function(){
+      const waiting = ["DECLARE_FILL_COMPLETE","CANCEL_SESSION","RESOLVE_IDENTIFICATION",
+        "CORRECT_TRAILER_IDENTITY","MERGE_TRAILERS","CORRECT_DEPARTURE"]
+        .filter(id => roleBlockedOnly(W, c, id));
+      return waiting.length
+        ? '<div class="note"><b>Waiting on someone else.</b> '+
+          waiting.map(id => idt(id)+" needs a "+esc(whoCan(W,id))).join("; ")+
+          ' — everything else about it is ready. A derived primary will route around a '+
+          'step you cannot perform, which is how you end up blocked three actions later '+
+          'with no visible cause (finding F18).</div>'
+        : "";
+    })() +
     (con.primDriver.length && con.primFacility.length
       ? '<p class="hidnote">Two next steps, not one. After the handoff these advance '+
         'independently \u2014 the driver checks out while the facility loads the trailer '+
