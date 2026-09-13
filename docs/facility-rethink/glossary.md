@@ -1,8 +1,12 @@
 # Glossary — Canonical Terms
 
-**Companion to:** `yard-dock-operations-model.md` v0.23, `action-availability-matrix.md` v0.14
-**Status:** Draft v0.8 — the fill-declaration wording, resolved
+**Companion to:** `yard-dock-operations-model.md` v0.23, `action-availability-matrix.md` v0.15
+**Status:** Draft v0.9 — a roster of roles
 **Purpose:** The single source of truth for every entity, state, action, flag, and label. When this document and another disagree, this one is wrong and should be corrected — but until it is, it is what the product, the training material, and support should say.
+
+### Changes from v0.8
+- **§4.1 added — a roster of roles.** The documents named actors only in flows' placeholder Actor column and gated five actions on config; there was no vocabulary for the people doing the work. Inferred, and marked as such.
+- **"Who can act now" added to §8** as a view, with what it needs before it can be built.
 
 ### Changes from v0.7
 - **Naming item §11 #4 resolved.** "Declare fill complete" as user-facing copy is retired; the displayed wording distinguishes the load declaration from the per-shipment session outcomes, which are two confirmations by two people that sounded like one thing.
@@ -123,6 +127,22 @@ Names that appeared in earlier drafts and no longer exist. Listed so old notes r
 | **UnappointedReturn** | A trailer arriving with no appointment, registration, or visit — typically a company trailer off route |
 | **TrailerIdentification** | One reading of a trailer number, from a guard, driver, or camera. Entry or exit |
 | **Event** | Append-only log entry. The backbone of trailer history and the only durable record of session outcomes |
+
+### 4.1 Roles
+
+**Inferred, not specified — and that is the point of listing them.** The documents name actors in flows' Actor column and gate five actions on configurable role lists (model §2.11); nothing else assigns work to people. This roster exists so there is one place to correct, and so matrix §1.8 has something to point at.
+
+| Role | Takes | Notes |
+|---|---|---|
+| **Driver** | `SELF_REGISTER`, `POSITION_TRAILER`, `DROP_TRAILER`, `HOOK_TRAILER`, `DECLARE_TAKE_LEG_CHANGE` | Not staff. Acts through the kiosk and the physical world |
+| **Gate** | `RECORD_ARRIVAL`, `ADMIT`, `REGISTER_AND_ADMIT`, `HOLD_OUTSIDE`, `BIND_TRAILER_TO_LEG`, `VERIFY_EMPTY`, `TURN_AWAY`, `CHECK_OUT` | Guard or kiosk; the two are interchangeable here |
+| **Clerk** | `AUTHORIZE_DEPARTURE`, `RESOLVE_IDENTIFICATION` | The records check, not a lane operation (matrix §2.3) |
+| **Dispatcher** | `ASSIGN_DOCK`, `RELEASE_DOCK`, `ASSIGN_YARD`, `CREATE_MOVE_TASK`, `ASSIGN_MOVE_TASK`, `ASSIGN_SHIPMENT`, `UNASSIGN_SHIPMENT` | "Planner" in flows is the same role wearing a different hat |
+| **Dock lead** | `OPEN_SESSION`, `START_SESSION`, `END_SESSION`, `DECLARE_FILL_COMPLETE`, `REOPEN_FILL`, `SEAL_TRAILER`, `BREAK_SEAL`, `PULL_FROM_DOCK`, session membership | `DECLARE_FILL_COMPLETE` is additionally role-gated by config, so the permitted role may not be this one |
+| **Yard team** | `START_MOVE`, `COMPLETE_MOVE`, `CANCEL_MOVE`, `INTAKE_TRAILER`, `ADVANCE_READINESS` | Spotters, wash bay, whoever the facility puts on it |
+| **Supervisor** | `ADJUST_STATE`, `CORRECT_TRAILER_IDENTITY`, `MERGE_TRAILERS`, `CORRECT_DEPARTURE`, `CANCEL_SESSION` on an active session, `PARTIAL` outcomes | Matrix §1.6's third tier. Mostly standing overrides rather than anybody's next step |
+
+**Two cautions.** The permitted role for a config-gated action is whatever `roles_can_*` says, which may differ from the role that normally performs it — that divergence is exactly what strands a gate clerk (matrix §1.1). And a facility may merge these: one person is often gate, clerk and dispatcher on a night shift. The roster is a vocabulary, not an org chart.
 
 ---
 
@@ -321,6 +341,7 @@ Computed, never stored. Internal name → what a user sees.
 | **Available Pool** | A **count** | `AVAILABLE_FOR_ASSIGNMENT`. A stock view, not a queue |
 | **Identification Queue** | Ordered | Disputed and unmatched readings |
 | **Effective Config** | Read-only | What one facility currently runs, with last-changed actor |
+| **Who can act now** | One lane per role | Each role's available actions, what each is waiting on, and which of their actions another role is waiting on. Needs the two additions in matrix §1.8; until then it cannot be built from the documents |
 
 ---
 

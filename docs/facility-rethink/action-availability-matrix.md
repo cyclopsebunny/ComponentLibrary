@@ -1,8 +1,13 @@
 # Action Availability Matrix
 
 **Companion to:** `yard-dock-operations-model.md` v0.23
-**Status:** Draft v0.14 — a reason must name a step the reader can take
+**Status:** Draft v0.15 — who can act, and who is waiting on whom
 **Purpose:** For any trailer in any state, define which actions appear, which appear disabled, which are hidden, and what the user is told — so a screen can be built without re-deriving preconditions from the action catalog.
+
+### Changes from v0.14
+Reported: a role picker makes a multi-party process look single-threaded and hides the blocking relationships entirely.
+- **§1.8 added** — the two pieces of data needed before "who can act right now" can be answered: an owning role on every action, and a clearing action on every condition. The second also answers §6 open question 1.
+- **§5 item 1a:** the role inventory is now a named gap rather than an omission.
 
 ### Changes from v0.13
 Reported from running the outbound preload as a gate clerk, which dead-ends three actions deep with no cause on screen.
@@ -147,6 +152,24 @@ The primary is the highest-priority action that is **available**, which means a 
 | On a TAKE leg, `READY_TO_DEPART` | `AUTHORIZE_DEPARTURE` |
 | Entry identification disputed | `RESOLVE_IDENTIFICATION` |
 | Undeclared exit detected | `CORRECT_DEPARTURE` |
+
+### 1.8 Who can act, and who is waiting on whom
+
+Everything above answers "what can be done to this trailer". A yard also asks a question this document cannot currently answer: **who can act right now, who is waiting on whom, and what can proceed in parallel.** Two pieces are missing, and both are data rather than prose.
+
+**An owning role on every action.** §3.4 names permission gates for five actions and is silent on who performs the other thirty-five. flows has an Actor column, but its §12 calls those placeholders. So nothing can group actions by the person who takes them, and a screen is left offering every action to everybody and refusing most of them afterwards. Add an owning role to each entry in the model's action catalog, drawn from a roster the glossary owns (glossary §4.1).
+
+**A clearing action on every condition.** §1.1's entire test turns on "the clearing action", and §3's tables never say what it is. Without that link nothing can compute that the clerk's departure authorization is waiting on the dock lead's load declaration — which is the single most useful thing a shift supervisor could be shown. Add a clearing-action column to §3.
+
+With both, three things fall out for free:
+
+| | |
+|---|---|
+| **Who is blocking whom** | A blocked action's condition names its clearing action; the clearing action names its role |
+| **What is genuinely parallel** | Two available actions in different roles' hands, neither clearing the other's blockers, can be taken in any order — and saying so prevents a queue being imposed where the operation has none |
+| **Which blocks are somebody else's** | The §1.1 escalation case: a step that is ready except for who is asking |
+
+This also answers §6 open question 1, which asks for the treatment to become a property of the condition in code. A condition that carries its treatment, its precedence and its clearing action is the whole of §1 as data.
 
 ---
 
@@ -385,6 +408,7 @@ Reason shown: **"Not permitted for your role"** — never naming which role, sin
 ## 5. What this document does not yet cover
 
 1. **Screen inventory.** Which of these surfaces appear on the gate screen, dock board, yard map, move queue, dock work queue, trailer detail, reconciliation screen, identification queue, and recovery queue. The matrix says what is available; not where.
+1a. **The role inventory itself** (§1.8). Five permission gates are specified and the other thirty-five actions have no owning role anywhere in the four documents. Until that exists, any "who can act now" view is guesswork, and permission failures can only be reported after the fact rather than routed to the right person up front.
 2. **Bulk actions.** Everything here is single-trailer. Real yards want "pull these four," and bulk breaks the one-reason-per-block model — it becomes a summary of mixed outcomes. Decide before queue screens are built; retrofitting bulk usually means rewriting the action layer.
 3. **Priority scoring.** Still "suggested ordering, tunable" in the model (§6.2). The matrix makes queues actionable but not ordered.
 4. **The `END_SESSION` reconciliation screen.** Named as the most consequential new UI and specified only as a requirement.
