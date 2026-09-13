@@ -1,8 +1,11 @@
 # Operational Flows — States, Flags, and Actions by Step
 
-**Companion to:** `yard-dock-operations-model.md` v0.22, `action-availability-matrix.md` v0.12, `glossary.md` v0.6
-**Status:** Draft v0.6 — flow 4 renamed; flow 4a added
+**Companion to:** `yard-dock-operations-model.md` v0.23, `action-availability-matrix.md` v0.13, `glossary.md` v0.7
+**Status:** Draft v0.7 — the two tracks after a handoff
 **Purpose:** Walk each appointment type from start to finish, showing at every step which states change, which flags can appear, which actions are available, and who acts.
+
+### Changes from v0.6
+- **The spine is not a linear composition** (§1.1). After the handoff the driver's phases and the trailer's are concurrent; flow 4a is written in two tracks, and §12's concurrency caveat is narrowed to the across-trailers case it actually described.
 
 ### Changes from v0.5
 - **Flow 4 renamed "Outbound pickup".** It takes a trailer that a *different* appointment loaded. Calling it a preload pickup conflated it with flow 4a.
@@ -32,6 +35,8 @@ So this document defines the **spine once** (§2) and then, per flow, shows only
 - which phases apply,
 - what differs at each,
 - who acts.
+
+**But the composition is not linear.** After `DROP_TRAILER` — the handoff (model §3.5) — the driver's remaining phases and the trailer's run **concurrently and independently**: he is authorized and checks out while the facility assigns a dock, loads and seals. They rejoin at `HOOK_TRAILER` and only there. So a flow is a subset of the spine *with repeats and with parallel branches*, and nothing should report an order between tracks that the operation does not have. Flow 4a is written in two tracks for that reason; model §10.14 has the argument.
 
 **Do not turn these into nine standalone specifications.** Nine copies of the spine will disagree with each other within a month, and then with the model. If a flow seems to need a step the spine does not have, that is a finding about the spine.
 
@@ -292,5 +297,5 @@ These interrupt the spine rather than belonging to one flow.
 1. **Screen layouts.** Which surface each step appears on — gate kiosk, dock board, yard map, queues. This says what is available at each step, not where.
 2. **Timing and SLAs.** No target durations per phase. Worth adding once real data exists.
 3. **Who exactly acts.** "Dispatcher," "dock lead," and "clerk" are placeholders; actual roles are facility-configured.
-4. **Concurrency.** Each flow reads as sequential. In reality P2 for one trailer overlaps P4 for twenty others, and the queues (§8 of the glossary) are how that is actually managed.
+4. **Concurrency across trailers.** In reality P2 for one trailer overlaps P4 for twenty others, and the queues (§8 of the glossary) are how that is actually managed. *Concurrency **within** one appointment — the driver's track and the trailer's after a drop — is no longer uncovered: see §1.1, flow 4a, and model §10.14.*
 5. **Flows 8+.** Reefer pre-cool, cross-dock, and other facility-specific patterns compose from the same spine but are not written out.

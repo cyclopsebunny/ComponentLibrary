@@ -267,6 +267,11 @@ select{padding-right:22px;
 .step.pass .mk{color:var(--ok)}
 .step.fail{background:var(--bad-bg)}
 .step.fail .mk{color:var(--bad)}
+.step.skipd{opacity:.5}
+.step.skipd .mk{color:var(--mute)}
+.trk-tag{display:block; font-size:9px; font-weight:600; letter-spacing:.06em;
+  text-transform:uppercase; color:var(--nav); margin-top:1px}
+.twoslot{display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
 
 /* ---- log + findings rail ---------------------------------------------- */
 .logl{display:flex; flex-direction:column; padding:0}
@@ -407,7 +412,7 @@ dialog footer{padding:11px 15px; border-top:1px solid var(--line); display:flex;
 <header class="top">
   <span class="brand">
     <b>Yard Flow Bench</b>
-    <span>Walks the yard &amp; dock document set against itself — model v0.22 · flows v0.6 · matrix v0.12 · glossary v0.6</span>
+    <span>Walks the yard &amp; dock document set against itself — model v0.23 · flows v0.7 · matrix v0.13 · glossary v0.7</span>
   </span>
   <span class="topctl">
     <label for="role">Acting as</label>
@@ -553,6 +558,7 @@ const WHY = {
   NOT_SEALED:"Seal the trailer first",
   SEALED:"Break the seal first",
   RESIDUAL:"Unexpected freight aboard — verify against the manifest",
+  NOT_LOADED_YET:"Expected freight is not aboard yet",
   UNVERIFIED:"Confirm the trailer is empty",
   ROLE:"Not permitted for your role",
   NO_DEST:"Assign a dock or yard destination first",
@@ -566,6 +572,18 @@ const WHY = {
 /* Condition precedence, matrix §1.3. Lower acts first. */
 const CLS = {SERVICE:1, PHYSICAL:2, DATA:3, PERMISSION:4, STRUCTURAL:2};
 
+/* Script steps name an actor. Rather than switching roles silently — which
+   would hide every permission gate — say whose step it is when it is not
+   yours. */
+const ACTOR_ROLE = {
+  "Driver":"DRIVER", "Driver 1":"DRIVER", "Driver 2":"DRIVER",
+  "Gate":"GUARD", "Gate / kiosk":"GUARD", "Guard":"GUARD", "Kiosk / guard":"GUARD",
+  "Clerk":"CLERK", "Dispatcher":"DISPATCHER",
+  "Dock lead":"DOCK_LEAD", "Dock crew":"DOCK_LEAD", "Dock lead / supervisor":"DOCK_LEAD",
+  "Spotter":"SPOTTER", "Yard team":"SPOTTER", "Supervisor":"SUPERVISOR",
+  "Maintenance":"SUPERVISOR", "Planner":"DISPATCHER", "Wash bay":"SPOTTER",
+  "Inspector":"SUPERVISOR"
+};
 const ROLES = [
   {id:"GUARD", label:"Guard"},
   {id:"CLERK", label:"Gate clerk"},
@@ -621,7 +639,7 @@ const CONFIG_KEYS = [
 
 let W = null;           /* the world */
 let SCEN = null;        /* active scenario */
-let CURSOR = 0;         /* script position */
+
 let DEVIATIONS = [];
 let SHOW_HIDDEN = false;
 let FINDINGS = [];      /* seeded + viewer-added */
@@ -934,6 +952,18 @@ function holdsAnything(w, v){
   return v.legs.some(l => l.trailer_id && hasTractor(w, l.trailer_id));
 }
 
+/* Is the TAKE leg's trailer fit to be taken — freight aboard as expected, no
+   part load? Custody is deliberately NOT part of this: it answers "is it ready
+   for him", which is what decides whether he hooks it or waits. */
+function takeLegReady(w, v){
+  const tl = takeLeg(w,v);
+  if (!tl || !tl.trailer_id) return false;
+  const rows = rowsOf(w, tl.trailer_id);
+  if (rows.some(r => r.link_state==="PART_LOADED")) return false;
+  const aboard = rows.filter(r => r.link_state==="ON_BOARD").map(r => r.shipment_id);
+  return !(tl.expected_shipment_ids||[]).some(x => !aboard.includes(x));
+}
+
 /* READY_TO_DEPART / AUTHORIZE_DEPARTURE share one predicate so the flag and
    the action can never disagree (glossary §7, model §5.1). */
 function readyToDepart(w, v, tid){
@@ -949,6 +979,7 @@ function readyToDepart(w, v, tid){
     if (!t.sealed && v.party_type!=="COMPANY_DRIVER") return false;
   }
   if (rows.some(r => r.link_state==="PART_LOADED")) return false;
+  if (!takeLegReady(w,v)) return false;
   return true;
 }
 
@@ -1110,7 +1141,12 @@ SELF_REGISTER:{
     const bl = bringLeg(w,v);
     if (bl && !bl.trailer_id && vals.number) bindLeg(w, v, bl, vals.number, "DRIVER");
     const t = bl && bl.trailer_id ? w.trailers[bl.trailer_id] : null;
-    if (t) t.destination = "AWAITING_ASSIGNMENT";
+    /* Only a trailer that is ARRIVING needs a destination. On visit 2 of an
+       outbound preload the BRING leg still names a trailer that has been
+       standing here for hours, loaded and sealed — it does not want a dock. */
+    if (t && t.position==="OFF_SITE") t.destination = "AWAITING_ASSIGNMENT";
+    else if (t) log("sys","<b>"+t.number+"</b> is already on site — its destination is left "+
+      "alone. A returning driver does not re-queue his own staged trailer.");
     else log("sys","No BRING leg — nothing to set <b>destination</b> on. See finding F6.");
   }
 },
@@ -1167,14 +1203,24 @@ ADMIT:{
     const bl = bringLeg(w,v);
     if (bl && bl.trailer_id){
       const t = w.trailers[bl.trailer_id];
-      t.position = "AT_GATE_IN";
-      rowsOf(w,t.id).filter(r => r.direction==="INBOUND").forEach(r => {
-        w.shipments[r.shipment_id].status = "ARRIVED";
-      });
-      /* "if claimed empty" — read as nothing aboard, not load state EMPTY: an
-         outbound live load already carries ASSIGNED rows from its TAKE leg. */
-      if (!hasFreight(w,t.id) && t.empty_verification==="UNVERIFIED")
-        t.empty_verification = "CLAIMED_EMPTY";
+      /* These effects describe a trailer ARRIVING. On visit 2 of an outbound
+         preload the BRING leg still names a trailer that has been standing at a
+         dock for hours — applying them again teleports it to the inbound apron
+         while it is still holding its dock. §5.1's ADMIT is written for a first
+         arrival and reapplies blindly; see finding F14. */
+      if (t.position==="OFF_SITE"){
+        t.position = "AT_GATE_IN";
+        rowsOf(w,t.id).filter(r => r.direction==="INBOUND").forEach(r => {
+          w.shipments[r.shipment_id].status = "ARRIVED";
+        });
+        /* "if claimed empty" — read as nothing aboard, not load state EMPTY: an
+           outbound live load already carries ASSIGNED rows from its TAKE leg. */
+        if (!hasFreight(w,t.id) && t.empty_verification==="UNVERIFIED")
+          t.empty_verification = "CLAIMED_EMPTY";
+      } else {
+        log("sys","<b>"+t.number+"</b> was already on site — it stays where it is. "+
+          "ADMIT's effects describe an arrival, and this is the driver's second visit.");
+      }
     }
     log("act","<b>ADMIT</b> — gate opened. Dockpass consumed; <b>presence → ON_SITE</b>.");
   }
@@ -1342,6 +1388,13 @@ AUTHORIZE_DEPARTURE:{
       const aboard = rows.filter(r => r.link_state==="ON_BOARD").map(r => r.shipment_id);
       const stray = aboard.filter(s => !expected.includes(s) && !residual.includes(s));
       if (stray.length) f.push(D(CLS.DATA, WHY.RESIDUAL));
+      /* "Matches" is symmetric, and only one half was ever specified: §6.1 has
+         UNEXPECTED_RESIDUAL for freight aboard that is not expected, and no
+         flag at all for freight expected that is not aboard. Without this the
+         driver can be authorized to leave with his load still on the dock.
+         Finding F15. */
+      const missing = expected.filter(x => !aboard.includes(x));
+      if (missing.length) f.push(D(CLS.DATA, WHY.NOT_LOADED_YET+" — "+missing.join(", ")));
       if (rows.some(r => r.link_state==="PART_LOADED")) f.push(D(CLS.DATA, WHY.PART_LOADED));
       const outboundAboard = rows.some(r => r.direction==="OUTBOUND" && r.link_state==="ON_BOARD");
       if (outboundAboard){
@@ -1646,7 +1699,14 @@ POSITION_TRAILER:{
       log("act","Driver pulls off and takes it to the exit lane — <b>position → AT_GATE_OUT</b>.");
       return;
     }
+    const asked = t.requested_destination;
     placeAt(w,t,vals.where);
+    if (asked && vals.where!==asked && !(asked==="YARD" && t.position!=="DOCK")){
+      t.last_variance = true;
+      log("dev","<b>PLACEMENT_VARIANCE</b> — sent to "+esc(asked)+", parked at "+
+        esc(vals.where)+". A driver can put it somewhere else just as a spotter can, "+
+        "and the report is accepted rather than refused (§2.9).");
+    }
     if (t.position==="DOCK"){
       const a = heldAssign(w,t.id);
       if (a && a.dock===t.dock){ a.state="FULFILLED"; }
@@ -2588,67 +2648,136 @@ const WORLD = {
 }
 };
 
-/* ---- primary action, derived not configured (matrix §1.7) -------------- */
-function primaryFor(w, ctx){
+/* ---- primary action, derived not configured (matrix §1.7) --------------
+
+   TWO primaries, not one. After `DROP_TRAILER` the driver's remaining steps
+   and the trailer's are independent — he checks out while the facility loads
+   it — so a single "next step" has to pick one and be wrong about the other.
+   The split is the §3.5 line: driver-side actions are the ones performed by
+   whoever has the trailer, facility-side are the ones performed by the people
+   who do not. Finding F16.                                                */
+const DRIVER_SIDE = new Set(["SELF_REGISTER","RECORD_ARRIVAL","ADMIT","REGISTER_AND_ADMIT",
+  "HOLD_OUTSIDE","POSITION_TRAILER","DROP_TRAILER","HOOK_TRAILER","VERIFY_EMPTY",
+  "AUTHORIZE_DEPARTURE","CHECK_OUT","DECLARE_TAKE_LEG_CHANGE","TURN_AWAY"]);
+
+function primaries(w, ctx){
+  const cands = primaryFor(w, ctx, true);
+  return {
+    driver:   cands.find(id => DRIVER_SIDE.has(id)) || null,
+    facility: cands.find(id => !DRIVER_SIDE.has(id)) || null
+  };
+}
+
+/* Returns the highest-priority available action, or — with all=true — every
+   candidate in priority order so the two tracks can each take their first. */
+function primaryFor(w, ctx, all){
+  const out = [];
+  const take = id => { if (id && !out.includes(id)) out.push(id); return !all; };
+  const R = primaryRules(w, ctx);
+  for (const id of R) if (take(id)) return out[0];
+  return all ? out : (out[0] || null);
+}
+
+function primaryRules(w, ctx){
   const t = ctx.t, v = ctx.v;
+  const out = [];
   const avail = id => ACTIONS[id] && treat(ACTIONS[id].gate(w,ctx)).t==="A";
+  const push = id => { if (avail(id) && !out.includes(id)) out.push(id); };
   const sess = t ? openSession(w,t.id) : null;
   const last = t ? lastSession(w,t.id) : null;
   const mv = t ? openMove(w,t.id) : null;
   const rows = t ? rowsOf(w,t.id) : [];
 
+  /* The drop is the handoff (§3.5). On a DROP appointment the driver does not
+     wait, so once he is at the destination the next thing he does is let go —
+     before any dock work, which is not his to start. */
+  if (t && v && v.visit_type==="DROP" && hasTractor(w,t.id) &&
+      ["DOCK","YARD_SPOT","LOT"].includes(t.position)){
+    /* ...unless THIS is the trailer he came to take and it is fit to go. On
+       visit 2 of a preload he has just hooked the trailer he dropped on visit
+       1, and telling him to drop it again would loop him in the yard. */
+    const tl0 = takeLeg(w,v);
+    const takingThisOne = tl0 && tl0.trailer_id===t.id && takeLegReady(w,v);
+    if (!takingThisOne) push("DROP_TRAILER");
+  }
   if (t && t.position==="DOCK"){
     if (!sess && rows.some(r => r.link_state==="ASSIGNED" || r.link_state==="ON_BOARD")
-        && avail("OPEN_SESSION")) return "OPEN_SESSION";
-    if (sess && sess.state==="OPEN" && sess.shipments.length && avail("START_SESSION")) return "START_SESSION";
-    if (sess && sess.state==="ACTIVE" && avail("END_SESSION")) return "END_SESSION";
+        && avail("OPEN_SESSION")) push("OPEN_SESSION");
+    if (sess && sess.state==="OPEN" && sess.shipments.length && avail("START_SESSION")) push("START_SESSION");
+    if (sess && sess.state==="ACTIVE" && avail("END_SESSION")) push("END_SESSION");
     if (!sess && last && ["ENDED","CANCELLED"].includes(last.state)){
-      if (avail("DECLARE_FILL_COMPLETE")) return "DECLARE_FILL_COMPLETE";
-      if (avail("PULL_FROM_DOCK")) return "PULL_FROM_DOCK";
+      if (avail("DECLARE_FILL_COMPLETE")) push("DECLARE_FILL_COMPLETE");
+      /* Matrix §1.7 lists "in yard, loaded, fill complete, unsealed → SEAL_TRAILER"
+         and has no row for the same trailer at a DOCK — which is where sealing
+         actually happens (flows §4 P4d seals before the trailer ever moves).
+         Without this row the suggestion after fill-complete is to pull it off
+         the dock unsealed. Finding F17. */
+      push("SEAL_TRAILER");
+      if (avail("PULL_FROM_DOCK")) push("PULL_FROM_DOCK");
     }
-    if (!sess && !rows.length && avail("ASSIGN_SHIPMENT")) return "ASSIGN_SHIPMENT";
+    if (!sess && !rows.length && avail("ASSIGN_SHIPMENT")) push("ASSIGN_SHIPMENT");
   }
   if (t && (t.position==="YARD_SPOT"||t.position==="LOT") && hasFreight(w,t.id) &&
-      t.fill==="COMPLETE" && !t.sealed && avail("SEAL_TRAILER")) return "SEAL_TRAILER";
+      t.fill==="COMPLETE" && !t.sealed && avail("SEAL_TRAILER")) push("SEAL_TRAILER");
   if (mv){
-    if (mv.state==="PENDING" && avail("ASSIGN_MOVE_TASK")) return "ASSIGN_MOVE_TASK";
-    if (mv.state==="ASSIGNED" && avail("START_MOVE")) return "START_MOVE";
-    if (mv.state==="IN_PROGRESS" && avail("COMPLETE_MOVE")) return "COMPLETE_MOVE";
+    if (mv.state==="PENDING" && avail("ASSIGN_MOVE_TASK")) push("ASSIGN_MOVE_TASK");
+    if (mv.state==="ASSIGNED" && avail("START_MOVE")) push("START_MOVE");
+    if (mv.state==="IN_PROGRESS" && avail("COMPLETE_MOVE")) push("COMPLETE_MOVE");
   }
-  if (t && flagsOf(w,t.id).includes("NEEDS_MOVE") && avail("CREATE_MOVE_TASK")) return "CREATE_MOVE_TASK";
-  if (t && hasTractor(w,t.id) && t.destination!=="NONE" && !atDestination(w,t) && avail("POSITION_TRAILER"))
-    return "POSITION_TRAILER";
+  if (t && flagsOf(w,t.id).includes("NEEDS_MOVE") && avail("CREATE_MOVE_TASK")) push("CREATE_MOVE_TASK");
+  /* Only while it has not been parked yet. A driver who has put it down and
+     been recorded somewhere other than where he was sent has finished his
+     part; re-parking stays available, but suggesting it forever is a loop. */
+  if (t && hasTractor(w,t.id) && t.destination!=="NONE" && !atDestination(w,t) &&
+      ["AT_GATE_IN","IN_MOTION"].includes(t.position) && avail("POSITION_TRAILER"))
+    push("POSITION_TRAILER");
+  /* He hooks it when it is ready for him, and waits when it is not — which on
+     visit 1 of a preload is the difference between taking his own empty
+     trailer straight back out and leaving it here to be loaded. */
+  if (v && !holdsAnything(w,v) && takeLegReady(w,v) && avail("HOOK_TRAILER"))
+    push("HOOK_TRAILER");
   if (v && takeLeg(w,v) && takeLeg(w,v).trailer_id &&
       readyToDepart(w,v,takeLeg(w,v).trailer_id) && avail("AUTHORIZE_DEPARTURE"))
-    return "AUTHORIZE_DEPARTURE";
-  if (v && v.presence==="ON_SITE" && !holdsAnything(w,v) && avail("AUTHORIZE_DEPARTURE"))
-    return "AUTHORIZE_DEPARTURE";
-  if (v && v.presence==="AUTHORIZED_TO_DEPART" && avail("CHECK_OUT")) return "CHECK_OUT";
+    push("AUTHORIZE_DEPARTURE");
+  if (v && v.presence==="ON_SITE" && !holdsAnything(w,v) && avail("AUTHORIZE_DEPARTURE")){
+    /* He can always leave — but leaving is only the RECOMMENDED next step when
+       nothing is owed to him. On the last visit of a preload, with his loaded
+       trailer not yet free, the right answer is to wait, and the console should
+       not be nudging him out of the gate. */
+    const tl2 = takeLeg(w,v);
+    if (!(tl2 && tl2.trailer_id) || v.visit_n < v.expected_visits)
+      push("AUTHORIZE_DEPARTURE");
+  }
+  if (v && v.presence==="AUTHORIZED_TO_DEPART" && avail("CHECK_OUT")) push("CHECK_OUT");
   if (t && t.identity_confidence==="DISPUTED" && avail("RESOLVE_IDENTIFICATION"))
-    return "RESOLVE_IDENTIFICATION";
+    push("RESOLVE_IDENTIFICATION");
   if (w.idents.some(i => i.kind==="EXIT" && i.unresolved && i.outcome==="UNDECLARED") &&
-      avail("CORRECT_DEPARTURE")) return "CORRECT_DEPARTURE";
-  if (v && avail("SELF_REGISTER")) return "SELF_REGISTER";
-  if (v && avail("ADMIT")) return "ADMIT";
-  if (t && t.destination==="AWAITING_ASSIGNMENT" && avail("ASSIGN_DOCK")) return "ASSIGN_DOCK";
-  return null;
+      avail("CORRECT_DEPARTURE")) push("CORRECT_DEPARTURE");
+  if (v && avail("SELF_REGISTER")) push("SELF_REGISTER");
+  if (v && avail("ADMIT")) push("ADMIT");
+  if (t && t.destination==="AWAITING_ASSIGNMENT" && avail("ASSIGN_DOCK")) push("ASSIGN_DOCK");
+  return out;
 }
 
 /* ---- assemble the console (matrix §1.5, §1.6) -------------------------- */
 function buildConsole(w, ctx){
-  const primary = primaryFor(w, ctx);
+  const P = primaries(w, ctx);
   const rows = [];
   Object.keys(ACTIONS).forEach(id => {
     const a = ACTIONS[id];
     const res = treat(a.gate(w,ctx));
     const mx = matrixSays(id, w, ctx);
-    rows.push({id, a, res, primary:id===primary, sup:a.tier==="sup",
+    rows.push({id, a, res, sup:a.tier==="sup",
+      side: id===P.driver ? "driver" : id===P.facility ? "facility" : null,
+      primary: id===P.driver || id===P.facility,
       diverges: mx && mx!==res.t ? mx : null});
   });
   const sup = rows.filter(r => r.sup && r.res.t!=="H");
   const supHidden = rows.filter(r => r.sup && r.res.t==="H");
   const nonSup = rows.filter(r => !r.sup);
   const prim = nonSup.filter(r => r.primary && r.res.t==="A");
+  const primDriver = prim.filter(r => r.side==="driver");
+  const primFacility = prim.filter(r => r.side==="facility");
   const availables = nonSup.filter(r => r.res.t==="A" && !r.primary);
   const disabled = nonSup.filter(r => r.res.t==="D")
     .sort((x,y) => Math.min(...x.a.gate(w,ctx).map(f=>f.cls)) -
@@ -2656,7 +2785,7 @@ function buildConsole(w, ctx){
   const shownD = disabled.slice(0,3);         /* matrix §1.5 — cap of three */
   const moreD  = disabled.slice(3);
   const hidden = nonSup.filter(r => r.res.t==="H");
-  return {prim, availables, shownD, moreD, hidden, sup, supHidden,
+  return {prim, primDriver, primFacility, availables, shownD, moreD, hidden, sup, supHidden,
     world: Object.keys(WORLD).map(id => {
       const res = treat(WORLD[id].gate(w,ctx));
       return {id, a:WORLD[id], res, world:true};
@@ -2676,17 +2805,21 @@ function baseYard(w){
 }
 /* blocked:true marks a step the documents expect to be REFUSED — the script
    advances on "Confirm refused" rather than on the action succeeding. */
-const st = (id,phase,doId,actor,says,ref,check,blocked,focus) =>
-  ({id,phase,do:doId,actor,says,ref,check,blocked,focus});
+const st = (id,phase,doId,actor,says,ref,check,blocked,focus,track,optional) =>
+  ({id,phase,do:doId,actor,says,ref,check,blocked,focus,track,optional});
 
 /* Some steps act on a different object than the previous one — the second
    trailer of a swap, the second appointment of a stay. The step says so and
    the bench follows, rather than making you hunt for the focus button. */
 function applyStepFocus(){
-  const s = currentStep();
-  if (!s || !s.focus) return;
-  if (s.focus.t) W.focusTrailer = s.focus.t;
-  if (s.focus.v) W.focusVisit = s.focus.v;
+  const o = openSteps();
+  for (const i of o){
+    const s = SCEN.script[i];
+    if (!s.focus) continue;
+    if (s.focus.t) W.focusTrailer = s.focus.t;
+    if (s.focus.v) W.focusVisit = s.focus.v;
+    return;
+  }
 }
 
 const SCENARIOS = [
@@ -2965,7 +3098,7 @@ const SCENARIOS = [
   id:"H2", group:"Custody and histories", name:"Outbound preload — one appointment, two visits",
   sub:"model §10.13 · the pattern §4 misses",
   ref:"model §10.13 · §4",
-  dek:"The driver brings an empty trailer, drops it, and leaves. The facility loads it. He comes back later and takes the same trailer away. One appointment, two visits, one trailer on both legs. Its leg structure is identical to an outbound live load — only the number of gate crossings differs, and that is the fact the model has no field for. Under the unamended §5.1 this cannot be walked at all: visit 1 could never be authorized to depart.",
+  dek:"The driver brings an empty trailer, drops it, and leaves. The facility loads it. He comes back later and takes the same trailer away. One appointment, two visits, one trailer on both legs — its leg structure is identical to an outbound live load, and only the number of gate crossings differs. After the drop the driver's steps and the trailer's run independently: the script opens both tracks at once and takes them in either order, because the operation has no order there to enforce.",
   phases:["P0","P1","P2","P3","P4","P5","P6"],
   seed(w){
     baseYard(w);
@@ -2989,42 +3122,66 @@ const SCENARIOS = [
           o.push("both legs should name the same trailer");
         return o; }),
     st("v1b","P1","ADMIT","Gate","Admitted; the dockpass is consumed.","model §5.1"),
-    st("v1c","P2","ASSIGN_YARD","Dispatcher","A spot to leave it in.","model §5.2"),
-    st("v1d","P3","POSITION_TRAILER","Driver","He parks it.","model §5.2"),
-    st("v1e","P3","DROP_TRAILER","Driver","Tractor detaches. **This is the moment the model cannot see** — the TAKE leg still names this trailer, and it is now sitting here empty.","model §10.13",
-      w => hasTractor(w,"TP") ? ["custody should be closed"] : []),
-    st("v1f","P5","AUTHORIZE_DEPARTURE","Clerk","Authorized to leave bobtail. Unamended, §5.1 would compare the TAKE leg's expected freight against an empty trailer and refuse.","model §10.13",
-      w => w.visits.V1.presence==="AUTHORIZED_TO_DEPART" ? []
-        : ["visit 1 must be able to depart"]),
-    st("v1g","P5","CHECK_OUT","Gate","**Visit 1 ends; the appointment does not.** A second visit slot opens with a fresh registration and a new dockpass.","model §10.13",
+    st("v1c","P2",["ASSIGN_DOCK","ASSIGN_YARD"],"Dispatcher","**Either** is valid — send him to a dock, or to a yard spot to await one. The rest of the flow adapts.","model §5.2",
+      w => ["DOCK_ASSIGNED","YARD_ASSIGNED"].includes(w.trailers.TP.destination)
+        ? [] : ["a dock or yard destination should be set"]),
+    st("v1d","P3","POSITION_TRAILER","Driver","He parks it and confirms where.","model §5.2",
+      w => { const t=w.trailers.TP;
+        return ["DOCK","YARD_SPOT","LOT"].includes(t.position) ? []
+          : ["the trailer should be parked"]; }),
+    st("v1e","P3","DROP_TRAILER","Driver","**The handoff.** From here the driver and the trailer are on independent tracks — the two open steps below can be worked in either order.","model §3.5 · finding F16",
+      w => { const t=w.trailers.TP, o=[];
+        if (hasTractor(w,"TP")) o.push("custody should be closed");
+        const held = heldAssign(w,"TP");
+        if (t.position==="DOCK" && t.destination!=="DOCK_ASSIGNED")
+          o.push("dropped at a dock, the destination should stay DOCK_ASSIGNED");
+        if (t.position!=="DOCK" && !held && t.destination!=="AWAITING_ASSIGNMENT")
+          o.push("dropped in the yard with no dock held, it should read AWAITING_ASSIGNMENT");
+        if (t.position!=="DOCK" && held && t.destination!=="DOCK_ASSIGNED")
+          o.push("dropped in the yard with a dock still held, it should keep DOCK_ASSIGNED and need a move");
+        return o; }),
+
+    /* ---- the driver's track: he is done here and leaves ---- */
+    st("dr1","P5","AUTHORIZE_DEPARTURE","Clerk","Authorized to leave bobtail. Unamended, §5.1 compared the TAKE leg's expected freight against an empty trailer and refused.","model §10.13",null,false,null,"driver"),
+    st("dr2","P5","CHECK_OUT","Gate","**Visit 1 ends; the appointment does not.** A second visit slot opens with a fresh registration and a new dockpass.","model §10.13",
       w => { const v=w.visits.V1, o=[];
         if (v.visit_n!==2) o.push("a second visit should have opened");
         if (v.presence!=="OFF_SITE") o.push("the new visit should start at OFF_SITE");
         if (v.dockpass) o.push("the consumed dockpass must not carry over");
         if (w.trailers.TP.position==="OFF_SITE") o.push("the trailer must stay on site");
         if (!stayOpen(w,"TP")) o.push("the trailer stay must remain open");
-        return o; }),
-    st("gap","P2","@TICK","—","The facility now has the trailer and the driver is gone.","model §10.13"),
-    st("d1","P2","ASSIGN_DOCK","Dispatcher","A dock for loading.","model §5.2"),
-    st("d2","P3","CREATE_MOVE_TASK","Dispatcher","No tractor — so now it is yard-team work.","model §3.5"),
-    st("d3","P3","ASSIGN_MOVE_TASK","Dispatcher","To a spotter.","model §5.2"),
-    st("d4","P3","START_MOVE","Spotter","Moving.","model §5.2"),
-    st("d5","P3","COMPLETE_MOVE","Spotter","Spotted at the dock.","model §5.2"),
-    st("d6","P4","OPEN_SESSION","Dock lead","Load session, pre-populated from the TAKE leg's rows.","model §5.3"),
-    st("d7","P4","START_SESSION","Dock crew","Loading.","model §5.3"),
-    st("d8","P4","END_SESSION","Dock lead","Both loaded.","model §5.3"),
-    st("d9","P4","DECLARE_FILL_COMPLETE","Dock lead","Fill complete.","model §5.3"),
-    st("d10","P4","SEAL_TRAILER","Dock lead","Sealed and staged, waiting for its own driver to come back.","model §5.4"),
-    st("d11","P3","PULL_FROM_DOCK","Dock lead","Off the dock so it is not blocking one.","model §5.3"),
-    st("d12","P3","ASSIGN_MOVE_TASK","Dispatcher","Spotter again.","model §5.2"),
-    st("d13","P3","START_MOVE","Spotter","Moving to a yard spot.","model §5.2"),
-    st("d14","P3","COMPLETE_MOVE","Spotter","Staged in the yard.","model §5.2"),
-    st("v2a","P1","SELF_REGISTER","Driver","**Visit 2.** The same driver returns and registers again — a second dockpass on the same appointment.","model §10.13",
-      w => { const v=w.visits.V1;
-        return v.visit_n===2 && v.dockpass ? [] : ["visit 2 needs its own dockpass"]; }),
-    st("v2b","P1","ADMIT","Gate","Admitted a second time.","model §5.1"),
-    st("v2c","P3","HOOK_TRAILER","Driver","Hooks the trailer he brought — now loaded and sealed. Custody span three.","model §10.12"),
-    st("v2d","P5","AUTHORIZE_DEPARTURE","Clerk","**Now** the TAKE leg is checked, because now he is taking it.","model §5.1",
+        return o; },false,null,"driver"),
+    st("dr3","P1","SELF_REGISTER","Driver","He returns and registers again — a second dockpass on the same appointment. **He must not be turned away**, and his staged trailer must not be re-queued for a dock.","model §10.13",
+      w => { const v=w.visits.V1, t=w.trailers.TP, o=[];
+        if (!(v.visit_n===2 && v.dockpass)) o.push("visit 2 needs its own dockpass");
+        /* order-independent: he may return before OR after the load is finished */
+        if (t.sealed && t.destination==="AWAITING_ASSIGNMENT")
+          o.push("a sealed trailer waiting for its own driver must not be back in the dock queue");
+        if (t.position==="AT_GATE_IN")
+          o.push("re-admitting the driver must not move the trailer he left here");
+        return o; },false,{v:"V1",t:"TP"},"driver"),
+    st("dr4","P1","ADMIT","Gate","Admitted a second time.","model §5.1",null,false,{v:"V1",t:"TP"},"driver"),
+
+    /* ---- the trailer's track: the facility loads it ---- */
+    st("tr1","P2","ASSIGN_DOCK","Dispatcher","Only if he left it in the yard. Skipped without complaint if it is already at a dock.","model §5.2",null,false,null,"trailer",true),
+    st("tr2","P3","CREATE_MOVE_TASK","Dispatcher","No tractor now — so moving it is yard-team work.","model §3.5",null,false,null,"trailer",true),
+    st("tr3","P3","ASSIGN_MOVE_TASK","Dispatcher","To a spotter.","model §5.2",null,false,null,"trailer",true),
+    st("tr4","P3","START_MOVE","Spotter","Moving.","model §5.2",null,false,null,"trailer",true),
+    st("tr5","P3","COMPLETE_MOVE","Spotter","Spotted at the dock.","model §5.2",null,false,null,"trailer",true),
+    st("tr6","P4","OPEN_SESSION","Dock lead","Load session, pre-populated from the TAKE leg's rows.","model §5.3",null,false,null,"trailer"),
+    st("tr7","P4","START_SESSION","Dock crew","Loading.","model §5.3",null,false,null,"trailer"),
+    st("tr8","P4","END_SESSION","Dock lead","Both loaded.","model §5.3",null,false,null,"trailer"),
+    st("tr9","P4","DECLARE_FILL_COMPLETE","Dock lead","Fill complete.","model §5.3",null,false,null,"trailer"),
+    st("tr10","P4","SEAL_TRAILER","Dock lead","Sealed and staged, waiting for its own driver.","model §5.4",null,false,null,"trailer"),
+    st("tr11","P3","PULL_FROM_DOCK","Dock lead","**Optional.** It can be pulled back to the yard so it is not blocking a dock — or left where it is until he arrives.","model §5.3",null,false,null,"trailer",true),
+    st("tr12","P3","ASSIGN_MOVE_TASK","Dispatcher","Spotter again, if it is being moved.","model §5.2",null,false,null,"trailer",true),
+    st("tr13","P3","START_MOVE","Spotter","Moving.","model §5.2",null,false,null,"trailer",true),
+    st("tr14","P3","COMPLETE_MOVE","Spotter","Staged in the yard.","model §5.2",null,false,null,"trailer",true),
+
+    /* ---- the tracks rejoin at the hook ---- */
+    st("v2c","P3","HOOK_TRAILER","Driver","**The rejoin.** He hooks the trailer he brought — now loaded and sealed. Custody span three.","model §10.12",
+      w => hasTractor(w,"TP") ? [] : ["the driver should have it again"],false,{v:"V1",t:"TP"}),
+    st("v2d","P5","AUTHORIZE_DEPARTURE","Clerk","**Now** the TAKE leg is checked, because now he is taking it — and its freight is aboard.","model §5.1",
       w => w.visits.V1.presence==="AUTHORIZED_TO_DEPART" ? [] : ["should authorize on visit 2"]),
     st("v2e","P5","CHECK_OUT","Gate","Leaves with it. Now the appointment closes too. Switch the History bracketing between Appointment and Visit to see the difference.","model §10.13",
       w => { const v=w.visits.V1, o=[];
@@ -3395,7 +3552,16 @@ const SEEDED = [
  refs:"model §10.12 · model §10.11 · model §3.6.2 · flows §9 · stress test 1-xv"},
 {id:"F14", sev:"blocks", title:"An appointment the driver attends twice cannot be walked at all",
  body:"<b>Reported from operations, not found by the bench.</b> What the documents called a \u201cpreload pickup\u201d is two different patterns. An <b>outbound pickup</b> collects a trailer that a different appointment loaded \u2014 one visit. An <b>outbound preload</b> is one appointment the driver attends <i>twice</i>: he brings an empty trailer, leaves, and returns for it loaded. Only the first was modelled, and §4 claimed full coverage.<br><br>Its legs are <i>identical</i> to an outbound live load \u2014 BRING T1 empty, TAKE T1 loaded \u2014 so the old table could express it while the machinery could not run it. Three things broke, and the first is fatal: <b>AUTHORIZE_DEPARTURE compared the TAKE leg's expected freight against a trailer standing in the yard empty, so visit 1 could never be authorized to depart.</b> <span class=\"id\">presence</span> is also one value ending terminally at DEPARTED with one on_site_since, and the dockpass is single-use \u2014 so visit 2 had no credential.<br><br>Fixed by scoping departure to the trailer the driver actually has, which <b>custody already knows</b> (§10.12): hooked means taking it, dropped means leaving bobtail and that leg is a later visit's business. No new bookkeeping. Walk \u201cOutbound preload\u201d and read the log at visit 1's check-out.",
- refs:"model §4 patterns 4 and 4a · model §10.13 · model §5.1 · model §2.4 · model §2.5 · glossary §2 · flows §6a"}
+ refs:"model §4 patterns 4 and 4a · model §10.13 · model §5.1 · model §2.4 · model §2.5 · glossary §2 · flows §6a"},
+{id:"F15", sev:"contradiction", title:"\u201cMatches the manifest\u201d was only ever checked in one direction",
+ body:"§5.1 requires the departing trailer's \u201caboard freight <b>matches</b> <span class=\"id\">expected_shipment_ids</span> plus <span class=\"id\">expected_residual_shipment_ids</span>\u201d. Matching is symmetric; only half of it is specified anywhere. §6.1 has <span class=\"id\">UNEXPECTED_RESIDUAL</span> for freight aboard that is not expected, and <b>no flag at all</b> for freight expected that is not aboard.<br><br>The consequence is not theoretical: a trailer whose TAKE leg expects two shipments, with both still on the dock, satisfied every departure check and read as <span class=\"id\">READY_TO_DEPART</span>. The driver could be waved out with his load still in the building. The LTL work was careful about residual freight in one direction and silent in the other.<br><br>Fixed by checking both directions, with a new reason string and a new flag. This was the defect behind \u201cpress the primary action and it goes off script\u201d.",
+ refs:"model §5.1 · model §6.1 · glossary §7 · matrix §3.3"},
+{id:"F16", sev:"gap", title:"After the handoff there are two next steps, and the spine only has room for one",
+ body:"<b>Reported from operations.</b> Once the driver drops the trailer, his remaining steps and the trailer's run <i>concurrently</i>: he is authorized and checks out while the facility assigns a dock, loads and seals. Neither waits for the other, and the trailer may be left at the dock or pulled back to the yard before he returns.<br><br>Two documents assume otherwise. flows §1.1 calls every flow \u201ca composition of the same six phases\u201d, in order \u2014 fine as a phase inventory, wrong as a sequence once P5 for the driver overlaps P2\u2013P4 for the trailer. And matrix §1.6 gives the card <b>one</b> primary action, so a console showing \u201cthe next step\u201d has to pick the driver's or the trailer's and be wrong about the other. flows §12 lists concurrency as uncovered, but only across trailers \u2014 this is within a single appointment.<br><br>The bench now runs two tracks that split at <span class=\"id\">DROP_TRAILER</span> and rejoin at <span class=\"id\">HOOK_TRAILER</span>, and shows two primaries: the driver's and the facility's. The split is §3.5's own line \u2014 whoever has the trailer, and whoever does not.",
+ refs:"flows §1.1 · flows §12 · matrix §1.6 · model §3.5 · model §10.13"},
+{id:"F17", sev:"gap", title:"The primary-action table has no row for sealing at a dock",
+ body:"Matrix §1.7 derives the primary action from state, and lists \u201cIn yard, loaded, fill complete, unsealed \u2192 <span class=\"id\">SEAL_TRAILER</span>\u201d. There is no equivalent row for the same trailer <i>at a dock</i> \u2014 which is where sealing actually happens: flows §4 P4d declares fill complete and seals with the trailer still on the dock, before it moves anywhere. With the table read literally, the suggestion after fill-complete is <span class=\"id\">PULL_FROM_DOCK</span>, so the recommended next step is to pull an unsealed load off the dock. Small, and exactly the kind of omission a derived-primary table hides until someone walks it.",
+ refs:"matrix §1.7 · matrix §2.5 · flows §4 P4d"}
 ];
 const SEV = {
   blocks:{l:"Blocks a flow", t:"r"}, contradiction:{l:"Documents disagree", t:"r"},
@@ -3418,7 +3584,10 @@ const APPLIED = {
   F10:"model v0.21 §5.2 · matrix v0.11 §4 · flows v0.5 P3",
   F11:"half — VERIFY_EMPTY reworded in model v0.21 §5.1; the real decision is now open item §10.10 for you",
   F12:"model v0.21 §3.5 and §6.1 · glossary v0.5 §5.1 — but the stored boolean is a stopgap; the end state is the custody model now written up at §10.12",
-  F14:"model v0.22 §4, §5.1, §2.4, §2.5 · matrix v0.12 §2.6 · flows v0.6 §6a · glossary v0.6 §2 — the pattern is now separated and walkable; §10.13 holds what is left to decide"
+  F14:"model v0.22 §4, §5.1, §2.4, §2.5 · matrix v0.12 §2.6 · flows v0.6 §6a · glossary v0.6 §2 — the pattern is now separated and walkable; §10.13 holds what is left to decide",
+  F15:"model v0.23 §5.1 and §6.1 · matrix v0.13 §3.3 · glossary v0.7 §7",
+  F16:"flows v0.7 §1.1 and §12 · matrix v0.13 §1.6 — and the bench now runs the two tracks",
+  F17:"matrix v0.13 §1.7"
 };
 SEEDED.forEach(f => { if (APPLIED[f.id]) f.fixed = APPLIED[f.id]; });
 
@@ -3469,9 +3638,9 @@ function renderRail(){
   '<p style="margin-bottom:7px"><span class="id">MONO</span> is always an internal '+
   'identifier. Sans is always a displayed label. Glossary §1.1 insists they stay '+
   'different things.</p>'+
-  '<p>The bench and the documents now agree: the two actions it once had to '+
-  'invent are in the catalog, and the findings rail says which of its fourteen '+
-  'findings have been applied and which are still open.</p></div>';
+  '<p>Two primaries, not one: the driver\u2019s next step and the facility\u2019s. '+
+  'After a drop they advance independently, and the script opens both tracks '+
+  'at once rather than forcing an order the operation does not have.</p></div>';
 }
 
 /* ---- spine ------------------------------------------------------------- */
@@ -3479,7 +3648,8 @@ function renderSpine(){
   const used = SCEN ? SCEN.phases : [];
   const cur = currentStep();
   const nowPhase = cur ? cur.phase : null;
-  const donePhases = new Set(SCEN ? SCEN.script.slice(0,CURSOR).map(s => s.phase) : []);
+  const donePhases = new Set(SCEN
+    ? SCEN.script.filter((s,i) => SCEN._results[i]).map(s => s.phase) : []);
   $("#spine").innerHTML = PHASES.map(p => {
     const cls = ["ph"];
     if (!used.includes(p.k)) cls.push("skip");
@@ -3623,21 +3793,29 @@ function actChip(r, isNext){
 function renderActions(){
   const w = W, c = ctxOf(w);
   const con = buildConsole(w,c);
-  const cur = currentStep();
-  const nextId = cur ? cur.do : null;
+  const nextIds = openSteps().flatMap(i => {
+    const d = SCEN.script[i].do;
+    return Array.isArray(d) ? d : [d];
+  });
   const out = [];
 
-  out.push('<div class="tier"><span class="t">Primary — the next step for this trailer'+
-    '<i></i>derived, never configured (matrix §1.7)</span><div class="acts">' +
-    (con.prim.length ? con.prim.map(r => actChip(r, r.id===nextId)).join("")
-      : '<span class="hidnote">Nothing advances this trailer right now. '+
-        'A primary slot is never filled by a disabled action.</span>') +
-    '</div></div>');
+  const slot = (label, note, list) =>
+    '<div class="tier"><span class="t">'+label+'<i></i>'+note+'</span><div class="acts">' +
+    (list.length ? list.map(r => actChip(r, nextIds.includes(r.id))).join("")
+      : '<span class="hidnote">Nothing here right now.</span>') + '</div></div>';
+  out.push('<div class="twoslot">' +
+    slot("Primary · the driver", "whoever has the trailer", con.primDriver) +
+    slot("Primary · the facility", "the people who do not", con.primFacility) +
+    '</div>' +
+    (con.primDriver.length && con.primFacility.length
+      ? '<p class="hidnote">Two next steps, not one. After the handoff these advance '+
+        'independently \u2014 the driver checks out while the facility loads the trailer '+
+        '(§3.5, finding F16).</p>' : ''));
 
   out.push('<div class="tier"><span class="t">Secondary<i></i></span><div class="acts">' +
-    (con.availables.length ? con.availables.map(r => actChip(r, r.id===nextId)).join("")
+    (con.availables.length ? con.availables.map(r => actChip(r, nextIds.includes(r.id))).join("")
       : '<span class="hidnote">Nothing else is available.</span>') +
-    con.shownD.map(r => actChip(r, r.id===nextId)).join("") +
+    con.shownD.map(r => actChip(r, nextIds.includes(r.id))).join("") +
     '</div>' +
     (con.moreD.length ? '<p class="hidnote">'+con.moreD.length+
       ' further blocked action'+(con.moreD.length===1?"":"s")+' collapsed — the cap of three '+
@@ -3648,14 +3826,14 @@ function renderActions(){
   if (con.sup.length) out.push('<div class="supwrap"><span class="t" style="font-size:10px;'+
     'font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--bad)">'+
     'Supervisor — reason code required</span><div class="acts">' +
-    con.sup.map(r => actChip(r, r.id===nextId)).join("") + '</div>' +
+    con.sup.map(r => actChip(r, nextIds.includes(r.id))).join("") + '</div>' +
     '<p class="note" style="margin:0;background:none;border:0;border-left:0;padding:0;'+
     'font-size:11px;color:var(--bad)">These write history nobody can fully trust. '+
     'Physical separation from the routine actions is a cheap control.</p></div>');
 
   out.push('<div class="tier"><span class="t">The world, not a user<i></i>'+
     'half the exception branches are this kind of fact</span><div class="acts">' +
-    con.world.map(r => actChip(r, r.id===nextId)).join("") + '</div></div>');
+    con.world.map(r => actChip(r, nextIds.includes(r.id))).join("") + '</div></div>');
 
   if (SHOW_HIDDEN){
     const hid = con.hidden.concat(con.supHidden);
@@ -3667,37 +3845,74 @@ function renderActions(){
 }
 
 /* ---- script ------------------------------------------------------------ */
-function currentStep(){ return SCEN && CURSOR < SCEN.script.length ? SCEN.script[CURSOR] : null; }
+/* A flow is not one line after the handoff. Steps carry a `track`; "main" is a
+   barrier — every earlier step must be done before a main step opens — while
+   named tracks interleave freely once the main steps before them are done. So
+   the driver can check out while the trailer is being loaded, in either order,
+   and neither is going off script. Finding F16. */
+const trackOf = s => s.track || "main";
+const stepDone = i => !!(SCEN._results[i] && SCEN._results[i].status);
+function openSteps(){
+  if (!SCEN) return [];
+  const script = SCEN.script;
+  const mainsDoneBefore = i => {
+    for (let j=0;j<i;j++) if (trackOf(script[j])==="main" && !stepDone(j)) return false;
+    return true;
+  };
+  const open = [], seen = {};
+  script.forEach((s,i) => {
+    if (stepDone(i)) return;
+    const tr = trackOf(s);
+    if (seen[tr]) return;
+    seen[tr] = true;
+    if (tr==="main"){
+      for (let j=0;j<i;j++) if (!stepDone(j)) return;
+      open.push(i);
+    } else if (mainsDoneBefore(i)) open.push(i);
+  });
+  return open;
+}
+function currentStep(){ const o = openSteps(); return o.length ? SCEN.script[o[0]] : null; }
+const stepMatches = (s,id) => Array.isArray(s.do) ? s.do.includes(id) : s.do===id;
 function renderSteps(){
   if (!SCEN){ $("#steps").innerHTML = ""; return; }
+  const open = openSteps();
+  const TRACK_LABEL = {main:"", driver:"driver", trailer:"trailer"};
   $("#steps").innerHTML = SCEN.script.map((s,i) => {
     const res = SCEN._results && SCEN._results[i];
     const cls = ["step"];
-    if (i===CURSOR) cls.push("now");
-    else if (i<CURSOR) cls.push("past");
+    if (open.includes(i)) cls.push("now");
+    else if (res) cls.push("past");
     if (res && res.status==="pass") cls.push("pass");
     if (res && res.status==="fail") cls.push("fail");
-    const act = (ACTIONS[s.do]||WORLD[s.do]);
+    if (res && res.status==="skip") cls.push("skipd");
+    const ids = Array.isArray(s.do) ? s.do : [s.do];
+    const act = (ACTIONS[ids[0]]||WORLD[ids[0]]);
     const mk = res
       ? (res.status==="pass" ? (s.blocked ? "refused, as written" : "matches the doc")
-                             : res.issues.join("; "))
-      : (i===CURSOR ? (s.blocked ? "expects a refusal" : "you are here") : "");
+         : res.status==="skip" ? "not needed here" : res.issues.join("; "))
+      : (open.includes(i) ? (s.blocked ? "expects a refusal"
+          : (open.length>1 ? "open now" : "you are here")) : "");
+    const tl = TRACK_LABEL[trackOf(s)];
     return '<div class="'+cls.join(" ")+'">' +
-      '<span class="sid">'+esc(s.id)+'</span>' +
-      '<span class="sy">'+esc(s.says)+'<br>' +
-        '<span class="who">'+esc(s.actor)+' · '+idt(s.do)+
+      '<span class="sid">'+esc(s.id)+(tl?'<span class="trk-tag">'+esc(tl)+'</span>':'')+'</span>' +
+      '<span class="sy">'+esc(s.says)+(s.optional?' <i style="color:var(--steel)">(optional)</i>':'')+'<br>' +
+        '<span class="who">'+esc(s.actor)+' · '+ids.map(idt).join(" or ")+
         (act && act.engine ? ' <b style="color:var(--bad)">ENGINE</b>' : '')+'</span> ' +
         '<span class="ref">'+esc(s.ref||"")+'</span></span>' +
       '<span class="mk">'+esc(mk)+'</span></div>';
   }).join("");
   const done = (SCEN._results||[]).filter(r => r && r.status==="pass").length;
   const bad  = (SCEN._results||[]).filter(r => r && r.status==="fail").length;
-  $("#scriptstat").innerHTML = CURSOR>=SCEN.script.length
+  const skipped = (SCEN._results||[]).filter(r => r && r.status==="skip").length;
+  $("#scriptstat").innerHTML = !open.length
     ? "<b>Walked to the end.</b> "+done+" step"+(done===1?"":"s")+" matched the documents"+
-      (bad ? ", "+bad+" did not" : "")+
+      (bad ? ", "+bad+" did not" : "")+(skipped ? ", "+skipped+" not needed" : "")+
       (DEVIATIONS.length ? " · "+DEVIATIONS.length+" off-script action"+
         (DEVIATIONS.length===1?"":"s") : "")
-    : "Step "+(CURSOR+1)+" of "+SCEN.script.length+
+    : (open.length>1
+        ? "<b>"+open.length+" steps open</b> — these tracks run independently, in any order"
+        : "Step "+(open[0]+1)+" of "+SCEN.script.length) +
       (bad ? " · "+bad+" mismatch"+(bad===1?"":"es") : "") +
       (DEVIATIONS.length ? " · "+DEVIATIONS.length+" off script" : "");
 }
@@ -3923,12 +4138,20 @@ function render(){
   $("#scendek").textContent  = SCEN ? SCEN.dek : "";
   $("#hidbtn").classList.toggle("on", SHOW_HIDDEN);
   $("#hidbtn").textContent = SHOW_HIDDEN ? "Hide hidden actions" : "Show hidden actions";
+  const wrongRole = openSteps().map(i => SCEN.script[i])
+    .filter(s => ACTOR_ROLE[s.actor] && ACTOR_ROLE[s.actor]!==W.role);
+  const roleNote = wrongRole.length
+    ? '<div class="note">Step '+wrongRole.map(s => esc(s.id)+" is the "+
+        esc(s.actor.toLowerCase())+"'s").join(", and ")+
+      '. Permission gates are real here, so switch <b>Acting as</b> to take it — '+
+      'or leave it and watch the reason the control gives you.</div>'
+    : "";
   const dv = DEVIATIONS.length ? '<div class="note">You are off the script — '+
     DEVIATIONS.length+' action'+(DEVIATIONS.length===1?"":"s")+
     ' the document does not list at that point: '+
     DEVIATIONS.map(d => idt(d)).join(", ")+'. That is allowed; the flow simply stops '+
     'predicting what comes next.</div>' : "";
-  $("#scenwarn").innerHTML = dv;
+  $("#scenwarn").innerHTML = roleNote + dv;
 }
 /* ===========================================================================
    PART 7 — INTERACTION
@@ -3938,7 +4161,7 @@ function loadScenario(id, keepConfig){
   const s = SCENARIOS.find(x => x.id===id) || SCENARIOS[0];
   const cfg = keepConfig && W ? JSON.parse(JSON.stringify(W.config)) : defaultConfig();
   W = blankWorld(cfg);
-  SCEN = s; CURSOR = 0; DEVIATIONS = [];
+  SCEN = s; DEVIATIONS = [];
   s._results = [];
   s.seed(W);
   syncStays(W);
@@ -4057,40 +4280,54 @@ function commit(id, vals){
   render();
 }
 
+function recordStep(i){
+  const s = SCEN.script[i];
+  const issues = s.check ? (s.check(W)||[]) : [];
+  SCEN._results[i] = {status: issues.length ? "fail" : "pass", issues};
+}
 function afterAction(id){
-  const cur = currentStep();
-  if (!cur) return;
-  if (cur.do===id){
-    const issues = cur.check ? (cur.check(W)||[]) : [];
-    SCEN._results[CURSOR] = {status: issues.length ? "fail" : "pass", issues};
-    CURSOR++;
-    applyStepFocus();
-    /* skip past any step the document expects to be blocked and now is not needed */
-    return;
+  if (!SCEN) return;
+  const open = openSteps();
+  for (const i of open)
+    if (stepMatches(SCEN.script[i], id)){ recordStep(i); applyStepFocus(); return; }
+  /* an optional step may be stepped over — the trailer can be left at the dock
+     rather than pulled back to the yard, and neither is a deviation */
+  for (const i of open){
+    const tr = trackOf(SCEN.script[i]);
+    const skipped = [];
+    for (let j=i;j<SCEN.script.length;j++){
+      const sj = SCEN.script[j];
+      if (trackOf(sj)!==tr) continue;
+      if (stepMatches(sj,id)){
+        skipped.forEach(k => { SCEN._results[k] = {status:"skip", issues:[]}; });
+        recordStep(j); applyStepFocus(); return;
+      }
+      if (!sj.optional) break;
+      skipped.push(j);
+    }
   }
   DEVIATIONS.push(id);
 }
 
 /* Confirm a step the document expects to be refused, then move on. */
 function confirmBlocked(){
-  const cur = currentStep();
-  if (!cur) return;
-  const a = ACTIONS[cur.do] || WORLD[cur.do];
+  const open = openSteps(); if (!open.length) return;
+  const idx = open[0], cur = SCEN.script[idx];
+  const firstDo = Array.isArray(cur.do) ? cur.do[0] : cur.do;
+  const a = ACTIONS[firstDo] || WORLD[firstDo];
   const res = treat(a.gate(W, ctxOf(W)));
   const ok = res.t!=="A";
-  SCEN._results[CURSOR] = {status: ok ? "pass" : "fail",
+  SCEN._results[idx] = {status: ok ? "pass" : "fail",
     issues: ok ? [] : ["the document expects this to be refused, and it is available"]};
   log(ok?"sys":"dev", ok
-    ? "Confirmed refused: <b>"+cur.do+"</b> — "+esc(res.why||"")+" ("+res.t+")."
-    : "<b>"+cur.do+"</b> should have been refused here and was not.");
-  CURSOR++;
+    ? "Confirmed refused: <b>"+firstDo+"</b> — "+esc(res.why||"")+" ("+res.t+")."
+    : "<b>"+firstDo+"</b> should have been refused here and was not.");
   applyStepFocus();
   render();
 }
 function skipStep(){
-  if (!currentStep()) return;
-  SCEN._results[CURSOR] = {status:"fail", issues:["skipped"]};
-  CURSOR++;
+  const open = openSteps(); if (!open.length) return;
+  SCEN._results[open[0]] = {status:"skip", issues:[]};
   applyStepFocus();
   render();
 }
@@ -4140,7 +4377,7 @@ function openConfig(){
     const cfg = JSON.parse(JSON.stringify(W.config));
     const sid = SCEN.id;
     W = blankWorld(cfg); SCEN = SCENARIOS.find(s => s.id===sid);
-    CURSOR = 0; DEVIATIONS = []; SCEN._results = [];
+    DEVIATIONS = []; SCEN._results = [];
     SCEN.seed(W); if (!W.role) W.role = "CLERK";
     buildRoleSelect();
     log("sys","Config changed — <b>"+esc(k.k)+"</b>. Scenario re-seeded.");

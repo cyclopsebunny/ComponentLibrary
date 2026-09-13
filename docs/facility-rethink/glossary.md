@@ -1,8 +1,12 @@
 # Glossary — Canonical Terms
 
-**Companion to:** `yard-dock-operations-model.md` v0.22, `action-availability-matrix.md` v0.12
-**Status:** Draft v0.6 — outbound pickup vs outbound preload; `Visit` as an entity
+**Companion to:** `yard-dock-operations-model.md` v0.23, `action-availability-matrix.md` v0.13
+**Status:** Draft v0.7 — `EXPECTED_FREIGHT_MISSING`
 **Purpose:** The single source of truth for every entity, state, action, flag, and label. When this document and another disagree, this one is wrong and should be corrected — but until it is, it is what the product, the training material, and support should say.
+
+### Changes from v0.6
+- **`EXPECTED_FREIGHT_MISSING` added** (§7). There was a flag for freight aboard that was not expected and none for freight expected that was not aboard.
+- **`READY_TO_DEPART` tightened** (§7): both directions of the match, and the driver must actually have the trailer.
 
 ### Changes from v0.5
 - **Bare "preload" banned** (§2). It meant a state, an outbound preload appointment, and an outbound pickup — and one of those three was called "preload pickup", which is the name that hid the distinction.
@@ -58,7 +62,7 @@ The highest-value section. Each of these will be said in meetings; none should a
 | **"Preload"** *(bare)* | Three different things: a loaded sealed trailer waiting (a state), an **outbound preload** appointment (§4 pattern 4a), and what used to be called a "preload pickup" but is an **outbound pickup** (pattern 4) | `PRELOAD_STAGED` for the state; "outbound preload" and "outbound pickup" for the two patterns, never interchangeably |
 | **"Visit"** *(bare, meaning the appointment)* | An appointment may be attended more than once, so the two are not the same object (model §10.13) | "appointment" for the booking; "visit" only for one arrival-to-departure span |
 | **"Trailer session"** | "Session" already means one work activity at a dock. A trailer's continuous time on site is a different span entirely, and it can contain several dock sessions across several appointments | `TrailerStay` — proposed in model §10.12, parallel to `DockStay` |
-| **"History"** *(bare)* | Four different spans bracket the same event log, and none nests inside another (model §10.12) | Name the bracketing: trailer-stay history, appointment history, dock-stay history, custody history |
+| **"History"** *(bare)* | Five different spans bracket the same event log, and only appointment ⊃ visit nests (model §10.12, §10.13) | Name the bracketing: trailer-stay, appointment, visit, dock-stay, or custody history |
 
 ---
 
@@ -271,7 +275,7 @@ Computed, never stored. Internal name → what a user sees.
 | `READY_TO_PULL` | "Ready to pull" | Work finished at a dock |
 | `BLOCKING_DOCK` | "Blocking dock" | Ready to pull, and the dock is needed |
 | `ACCEPTING_FREIGHT` | "Open — accepting" | Has freight, fill still `OPEN` |
-| `READY_TO_DEPART` | "Ready to depart" | Matches its leg, fill complete, sealed |
+| `READY_TO_DEPART` | "Ready to depart" | Matches its leg **in both directions**, fill complete, sealed, **and the driver has it** — one he dropped is waiting for a later visit, not ready to go |
 | `PRELOAD_STAGED` | "Staged" | Loaded, sealed, awaiting pickup |
 | `STAGED_AGING` | "Staged — aging" | Staged too long, or its pickup no-showed |
 | `AVAILABLE_FOR_ASSIGNMENT` | "Available" | Ready, empty, in service, unassigned, on site — **the pool** |
@@ -280,6 +284,7 @@ Computed, never stored. Internal name → what a user sees.
 | `PART_LOAD_HELD` | "Part load — blocked" | A part-loaded shipment blocks sealing and departure |
 | `PARTIAL_RECEIPT` | "Partial receipt" | LTL trailer leaving with expected freight aboard. **Normal** |
 | `UNEXPECTED_RESIDUAL` | "Unexpected freight" | Freight aboard that is not on the residual list |
+| `EXPECTED_FREIGHT_MISSING` | "Freight not loaded" | A TAKE leg's expected shipments are not all aboard at authorization — the load is still in the building. The other direction of the same check (model §6.1) |
 | `DETENTION_RISK` | "Detention risk" | Live visit approaching free-time |
 | `PAST_WINDOW` | "Past window" | Beyond the appointment window, not departed |
 | `OUTSIDE_PERIMETER` | "Outside gate" | In a lot with `inside_fence = false` |

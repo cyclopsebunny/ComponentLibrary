@@ -1,8 +1,13 @@
 # Action Availability Matrix
 
-**Companion to:** `yard-dock-operations-model.md` v0.22
-**Status:** Draft v0.12 — departure scoped to the driver's own trailer
+**Companion to:** `yard-dock-operations-model.md` v0.23
+**Status:** Draft v0.13 — two primary slots; the missing half of the freight check
 **Purpose:** For any trailer in any state, define which actions appear, which appear disabled, which are hidden, and what the user is told — so a screen can be built without re-deriving preconditions from the action catalog.
+
+### Changes from v0.12
+- **Two primary slots** (§1.6) — the driver's next step and the facility's. Model §10.14: after the handoff they are concurrent, and one slot cannot show both.
+- **`SEAL_TRAILER` row added for a trailer at a dock** (§1.7). The table had only the in-yard case, so the derived suggestion after fill-complete was to pull an unsealed load off the dock.
+- **"Expected freight is not aboard yet" added** (§3.3). §5.1's "matches the manifest" is symmetric and only the unexpected-freight half was ever written down.
 
 ### Changes from v0.11
 - **`AUTHORIZE_DEPARTURE`'s blocked reasons apply only to the trailer the driver actually has** (§2.6). Scoping them to every leg of the appointment made visit 1 of an outbound preload permanently un-authorizable (model §4 pattern 4a, §10.13).
@@ -105,7 +110,7 @@ If more than three disabled controls would show, keep the three highest by §1.3
 
 | Tier | Presentation | Contents |
 |---|---|---|
-| **Primary** | Buttons on the card | One or two actions that advance this trailer's next step. **Never a disabled action** |
+| **Primary** | Buttons on the card | **Two slots, not one** (model §10.14): what the *driver* does next and what the *facility* does next. After a drop these advance independently — he checks out while the trailer is loaded — so a single slot has to pick one and be wrong about the other. On a live load both resolve to the same object's business and only one fills. **Never a disabled action** |
 | **Secondary** | Menu | Everything else available, plus disabled actions per §1.1 and §1.5 |
 | **Supervisor** | Menu, visually separated, reason code required | `ADJUST_STATE`, `CORRECT_TRAILER_IDENTITY`, `MERGE_TRAILERS`, `CORRECT_DEPARTURE`, `CANCEL_SESSION` on an active session, `PARTIAL` outcomes, loaded substitutions |
 
@@ -120,6 +125,7 @@ Supervisor actions never sit adjacent to routine ones. They are the actions that
 | At a dock, session `ACTIVE` | `END_SESSION` |
 | At a dock, session `ENDED`, work complete | `DECLARE_FILL_COMPLETE` or `PULL_FROM_DOCK` |
 | At a dock, empty, nothing assigned | `ASSIGN_SHIPMENT` |
+| **At a dock**, loaded, fill complete, unsealed | `SEAL_TRAILER` — **added in v0.13.** This row was missing, and sealing is where a dock stay normally ends (flows §4 P4d). Without it the suggestion after fill-complete is `PULL_FROM_DOCK`, i.e. pull an unsealed load off the dock |
 | In yard, loaded, fill complete, unsealed | `SEAL_TRAILER` |
 | In yard, `NEEDS_MOVE` | `CREATE_MOVE_TASK` |
 | Move `PENDING` | `ASSIGN_MOVE_TASK` |
@@ -315,6 +321,7 @@ All three are **D**: each has a clearing action available to someone present.
 | Not sealed | D | "Seal the trailer first" |
 | Sealed | D | "Break the seal first" |
 | Freight aboard not on residual list | D | "Unexpected freight aboard — verify against the manifest" |
+| **Expected freight not aboard** | D | "Expected freight is not aboard yet" — the other direction of the same check, missing until v0.13 (model §5.1) |
 | `empty_verification = UNVERIFIED` | D | "Confirm the trailer is empty" |
 | Trailer holds inbound freight, blocking outbound assignment | **H** | *(nothing shown — clearing it is a different plan)* |
 | No freight aboard, for a freight-requiring action | **H** | |

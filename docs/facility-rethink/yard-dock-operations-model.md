@@ -1,7 +1,17 @@
 # Yard, Dock & Appointment Operations — Domain Model and UI Specification
 
-**Status:** Draft v0.22 — outbound preload; departure scoped to the driver's own trailer
+**Status:** Draft v0.23 — freight matching in both directions; the two tracks after a drop
 **Purpose:** Define the entities, independent state dimensions, actions, derived work queues, and trailer-card display rules needed to manage trailers, shipments, and appointments at a distribution facility.
+
+### Changes from v0.22
+
+Found by walking the outbound preload in the bench and pressing only the suggested action at each step.
+
+- **Freight matching is now checked in both directions** (§5.1) and **`EXPECTED_FREIGHT_MISSING` added** (§6.1). "Aboard freight matches `expected_shipment_ids`" is symmetric, and only the aboard-but-not-expected half was ever specified. A trailer whose TAKE leg expected two shipments, both still on the dock, passed every departure check and flagged `READY_TO_DEPART`.
+- **`READY_TO_DEPART` also requires the driver to have the trailer** (§6.1). One he dropped is not ready to depart; it is waiting for a later visit.
+- **`ADMIT`'s trailer effects apply only to a trailer that is arriving** (§5.1). On a second visit they moved a trailer off its dock to the inbound apron.
+- **§10.14 added** — after the handoff the driver and the trailer are on concurrent tracks, which neither flows §1.1's ordered spine nor matrix §1.6's single primary can express.
+- **Three stress tests added** (22e–22g).
 
 ### Changes from v0.21
 
@@ -980,11 +990,11 @@ Each action lists preconditions and effects. This table is the contract: the UI 
 | `BIND_TRAILER_TO_LEG` | Leg has no trailer; **number not already on site at this facility**; trailer `IN_SERVICE` if the record exists | Creates the trailer record if the carrier-and-number is new; records `identified_by`; leg gets `trailer_id`. **Creates TrailerLoad rows from the leg's `expected_shipment_ids`** (§9 #37): `ON_BOARD` for a BRING leg, `ASSIGNED` for a TAKE leg. **On a BRING leg, tractor → `ATTACHED`** — the trailer was driven here and stays hooked until `DROP_TRAILER` (§3.5). See §10.10 for the empty-verification gap this path opens |
 | `SELF_REGISTER` | **QR code scanned at the facility sign** (§9 #31); appointment exists and is within its window; driver supplies appointment ID and trailer number | `registration → SELF_REGISTERED`; `presence → AT_FACILITY`; `self_registered_at` and `arrived_at` set; **dockpass issued**. **On a visit with a BRING leg:** that trailer bound (§2.15), its tractor `ATTACHED`, and `destination → AWAITING_ASSIGNMENT`. **On a TAKE-only visit** (patterns 4 and 8 — a driver arriving bobtail) there is nothing to bind and nothing to set a destination on; the trailer named by the TAKE leg keeps whatever destination it already had, and the driver's own trailer number is not collected until `HOOK_TRAILER` |
 | `RECORD_ARRIVAL` | Truck at the gate with **no prior QR scan** | `presence → AT_GATE`; `arrived_at` set. Redundant for self-registering drivers, whose scan already recorded arrival (§9 #31) |
-| `ADMIT` | `presence = AT_FACILITY` or `AT_GATE`; **one of** a valid unconsumed dockpass, gate registration, or an RF badge where `access_method = RF_BADGE` (§9 #34); BRING-leg trailer identified **where the visit has a BRING leg** | Dockpass consumed if one was used; `presence → ON_SITE`; `admitted_at` and `on_site_since` set; BRING trailer position → `AT_GATE_IN`; inbound shipments → `ARRIVED`; if nothing is aboard, `empty_verification → CLAIMED_EMPTY` |
+| `ADMIT` | `presence = AT_FACILITY` or `AT_GATE`; **one of** a valid unconsumed dockpass, gate registration, or an RF badge where `access_method = RF_BADGE` (§9 #34); BRING-leg trailer identified **where the visit has a BRING leg** | Dockpass consumed if one was used; `presence → ON_SITE`; `admitted_at` and `on_site_since` set. **The trailer effects apply only to a trailer that is arriving** (`position = OFF_SITE`): BRING trailer position → `AT_GATE_IN`; inbound shipments → `ARRIVED`; if nothing is aboard, `empty_verification → CLAIMED_EMPTY`. On a second visit (§10.13) the BRING leg still names a trailer that has been standing at a dock for hours — reapplying these moves it to the inbound apron while it is still holding its dock |
 | `REGISTER_AND_ADMIT` | Kiosk or guard, no prior self-registration | The single-step path: sets registration, presence, and optionally destination in one transaction. **No separate logic** — it writes the same dimensions (§3.6.4) |
 | `HOLD_OUTSIDE` | `presence = AT_GATE`; no dock assigned | Visit held outside the fence. Stays `AT_GATE`, remains in the dock-assignment queue. **Does not start the detention clock** where detention runs from admission (§10.6) |
 | `VERIFY_EMPTY` | **Nothing aboard** — no `ON_BOARD` or `PART_LOADED` rows. *Not* load state `EMPTY`: an outbound live load is `ASSIGNED_ONLY` from the moment its TAKE leg is bound, so the stricter reading would make this action unavailable on the one flow that needs it | `empty_verification → VERIFIED_EMPTY`. Optional at gate or any time after (§9 #6) |
-| `AUTHORIZE_DEPARTURE` | Every leg has a trailer. **The freight checks apply only to the trailer this visit is actually leaving with** — the TAKE-leg trailer the driver currently has hooked (§3.5). A driver who dropped what he brought and hooked nothing leaves bobtail, and a TAKE leg he has not hooked is a later visit's business (§10.13). For that departing trailer: aboard freight matches `expected_shipment_ids` **plus `expected_residual_shipment_ids`** (§2.5); if carrying *outbound* freight, `fill_declaration = COMPLETE` and sealed; no open MoveTask or DockSession on TAKE trailer. **`party_type = COMPANY_DRIVER` relaxes the seal and authorization ceremony but not the trailer-to-load match** (§9 #34) | Visit → `AUTHORIZED_TO_DEPART` |
+| `AUTHORIZE_DEPARTURE` | Every leg has a trailer. **The freight checks apply only to the trailer this visit is actually leaving with** — the TAKE-leg trailer the driver currently has hooked (§3.5). A driver who dropped what he brought and hooked nothing leaves bobtail, and a TAKE leg he has not hooked is a later visit's business (§10.13). For that departing trailer, **freight matching is checked in both directions**: nothing aboard that is not on `expected_shipment_ids` **plus `expected_residual_shipment_ids`** (§2.5) — *and nothing on `expected_shipment_ids` still missing*, which v0.22 and earlier never said and no flag covered (§6.1); if carrying *outbound* freight, `fill_declaration = COMPLETE` and sealed; no open MoveTask or DockSession on TAKE trailer. **`party_type = COMPANY_DRIVER` relaxes the seal and authorization ceremony but not the trailer-to-load match** (§9 #34) | Visit → `AUTHORIZED_TO_DEPART` |
 | `CHECK_OUT` | Visit `AUTHORIZED_TO_DEPART`. **No camera dependency** — reads are too slow to gate the lane (§9 #28) | `presence → DEPARTED` **for this visit**; the trailer the driver has hooked → `OFF_SITE`, custody closed — *not* simply "the TAKE-leg trailer", which on visit 1 of a preload is staying (§10.13); outbound shipments → `DEPARTED`. Detention stops at the exit image *capture* time once the read lands, otherwise at the clerk's action (§3.6) |
 | `DECLARE_TAKE_LEG_CHANGE` | Visit `ON_SITE` or later, before `CHECK_OUT`; substitute trailer on site and not on another open leg; supervisor confirmation if the substitute carries freight (§5.1) | TAKE leg's `trailer_id` amended, or cleared for a bobtail departure. Original trailer stays on site with its shipments intact. Logged against both trailers |
 | `RESOLVE_IDENTIFICATION` | An identification pair in `MISMATCH`, or an `UNMATCHED` read; role permitted by facility config | Records which source was correct and who decided. May trigger `CORRECT_TRAILER_IDENTITY` or `MERGE_TRAILERS` (§5.5) if the wrong record was already used |
@@ -1169,7 +1179,7 @@ The planner-driven path is the original requirement to send an empty trailer to 
 | `AVAILABLE_FOR_ASSIGNMENT` | `READY`, empty, in service, unassigned, on site. **The pool** (§6.4) |
 | `READY_TO_PULL` | At a `DOCK`, no `OPEN`/`ACTIVE` session, and either `fill_declaration = COMPLETE` or load state `EMPTY` |
 | `ACCEPTING_FREIGHT` | Has freight, `fill_declaration = OPEN` — spare capacity available |
-| `READY_TO_DEPART` | On a TAKE leg; shipments match leg expectation; `COMPLETE` and sealed if carrying freight |
+| `READY_TO_DEPART` | On a TAKE leg; shipments match leg expectation **in both directions** (§5.1); `COMPLETE` and sealed if carrying freight; **and the driver has it** — a trailer he dropped is not ready to depart, it is waiting for a later visit (§10.13) |
 | `BLOCKING_DOCK` | `READY_TO_PULL` and there is demand for that dock |
 | `PRELOAD_STAGED` | ≥1 `ON_BOARD` outbound row, shipments `STAGED`, position `YARD_SPOT` |
 | `STAGED_AGING` | `PRELOAD_STAGED` beyond a threshold, or its pickup appointment is `NO_SHOW` (§9.1, §10.3) |
@@ -1181,6 +1191,7 @@ The planner-driven path is the original requirement to send an empty trailer to 
 | `PART_LOAD_HELD` | ≥1 `PART_LOADED` row — blocks fill-complete, sealing, and departure (§3.2.1) |
 | `PARTIAL_RECEIPT` | Inbound rows remain `ON_BOARD` and appear on the TAKE leg's `expected_residual_shipment_ids` — an LTL trailer leaving with freight aboard. **Normal, not an exception** (§2.5) |
 | `UNEXPECTED_RESIDUAL` | Freight aboard at authorization that is *not* on the residual list — the real discrepancy |
+| `EXPECTED_FREIGHT_MISSING` | **The other direction, and it was missing until v0.23.** A TAKE leg's `expected_shipment_ids` not all `ON_BOARD` at authorization — the load is still in the building. Without it a trailer read as `READY_TO_DEPART` with its freight on the dock |
 | `SPOT_CONFLICT` | Two trailers reported into the same numbered spot (§2.9) |
 | `POSITION_STALE` | `position_confidence = REPORTED` and not confirmed by the last yard check (§2.12) |
 | `FIRST_VISIT` | No prior visit history at this facility — either genuinely new or a mistyped number (§5.1) |
@@ -1676,6 +1687,40 @@ This is why §10.12 and this item should be decided together: custody is what ma
 
 Take it, and take it with §10.12. The pieces are the same shape, the custody span does most of the work, and `expected_visits` plus a visit span is a small addition next to what it unblocks. The alternative — modelling the preload as two separate appointments (pattern 7) — is what a facility would be forced to do today, and it loses the fact that one booking and one carrier commitment covers both halves.
 
+### 10.14 After the handoff, a flow is two tracks rather than one
+
+**Reported from operations.** `DROP_TRAILER` is described as the handoff (§3.5) — the moment the trailer stops being the driver's problem and becomes the yard team's. What follows from that has not been drawn out: from the handoff until the hook, **the driver's remaining steps and the trailer's are concurrent and independent.**
+
+On an outbound preload (§4 pattern 4a):
+
+| The driver's track | The trailer's track |
+|---|---|
+| Authorized to depart, checks out | A dock assigned if he left it in the yard |
+| — gone, possibly for hours — | Moved, loaded, fill declared, sealed |
+| Registers again, admitted again | Left at the dock, **or** pulled back to a yard spot |
+
+Neither waits for the other. He can check out before the dock is even assigned, or the load can finish before he returns. They rejoin at `HOOK_TRAILER`, and only there.
+
+#### What this contradicts
+
+| Document | Assumption | Why it does not hold |
+|---|---|---|
+| flows §1.1 | A flow is "a composition of the same six phases", in order | Correct as a phase inventory, wrong as a sequence: P5 for the driver overlaps P2–P4 for the trailer |
+| matrix §1.6 | The card carries **one** primary action | There are two next steps at once, on two different objects. A console must pick one and be wrong about the other |
+| flows §12 | Concurrency is "not covered" — P2 for one trailer overlapping P4 for twenty others | That is concurrency *across* trailers. This is concurrency *within one appointment* |
+
+#### The shape
+
+The split is §3.5's own line, and it needs no new concept: **driver-side** steps are performed by whoever has the trailer, **facility-side** steps by the people who do not. Custody (§10.12) already says which is which at any moment.
+
+- **Two primary slots**, not one — "what the driver does next" and "what we do next". The bench renders both, and on a live load they are simply the same object's business so only one fills.
+- **A flow is a subset of the spine with repeats *and* with parallel branches.** flows §1.1's warning against nine standalone specifications still stands; what needs correcting is the claim that the composition is linear.
+- **Order between tracks is not a rule**, so nothing should enforce or report it. A checklist that marks the driver's check-out "out of sequence" because the dock is not assigned yet is describing a constraint the operation does not have.
+
+#### Recommendation
+
+Take the two primary slots — it is a presentation change, and it is the difference between a console that describes the yard and one that argues with it. The deeper question, whether `VisitLeg` should carry which track it belongs to, can wait for §10.13.
+
 ---
 
 ## 11. Stress tests
@@ -1767,6 +1812,9 @@ Run these against the model before writing code. If any cannot be expressed, the
 22a. **new** — **An outbound preload.** Driver brings an empty trailer, drops it, and departs; the facility loads and seals it; the same driver returns on the **same appointment** and takes it. Visit 1 must be authorizable to depart even though the TAKE leg names a trailer that is staying. Two visits, two dockpasses, two detention spans, one trailer stay. *(§4 pattern 4a, §10.13)*
 22b. **new** — Same appointment, but on the return visit the driver takes a **different** trailer. Must be a declared substitution on the TAKE leg, not a second failed pickup. *(§5.1, §10.13)*
 22c. **new** — Same appointment, but the driver never comes back. The loaded trailer stages and ages; `PICKUP_NOT_TAKEN` must fire on the *appointment*, not on visit 1's departure. *(§10.13)*
+22e. **new** — A TAKE leg expects two outbound shipments and **neither has been loaded.** Authorization must refuse, `EXPECTED_FREIGHT_MISSING` must raise, and `READY_TO_DEPART` must not appear. The trailer must not be able to leave with its load still on the dock. *(§5.1, §6.1)*
+22f. **new** — After `DROP_TRAILER` on an outbound preload, the driver's departure and the trailer's dock work must be workable **in either order**, and neither may be treated as out of sequence. A console offering one "next step" must offer two. *(§3.5, flows §1.1)*
+22g. **new** — On the return visit, `ADMIT` must not move the trailer the driver left at a dock, and registration must not put his sealed trailer back in the dock-assignment queue. *(§5.1, §10.13)*
 22d. **new** — An **outbound pickup** (pattern 4) and an **outbound preload** (pattern 4a) side by side. One visit versus two, another appointment's trailer versus the driver's own. No screen, report, or metric may treat them as the same thing. *(§4)*
 23. A trailer is assigned a shipment on a driver's empty claim and turns out not to be empty. *(§9 #6)*
 24. Load state computes to `IN_WORK` with no active session. Alarm, not silent display. *(`INTEGRITY_ALARM`)*

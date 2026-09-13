@@ -21,7 +21,11 @@ Not a UI prototype. It is the document set's own rules, implemented once and exe
   decided in one place. This is what matrix §6 open question 1 asks for.
 - **Matrix §2.1 transcribed** and compared against what the engine derives from the model's
   preconditions. Where they disagree, the action chip says so on its face.
-- **The primary action derived, never configured** (matrix §1.7).
+- **Two primary actions derived, never configured** (matrix §1.7) — the driver's next step and
+  the facility's, because after a drop those are different objects' business.
+- **Concurrent script tracks.** A scenario's steps carry a track; the driver's and the trailer's
+  open at the same time and can be worked in either order, because the operation has no order
+  there to enforce.
 - **The `END_SESSION` reconciliation as a real per-shipment screen**, not a confirmation
   dialog — the thing model §12 says to design early.
 
@@ -73,10 +77,10 @@ Two scenarios sit in that group:
 
 ## Findings
 
-Fourteen findings are built in — thirteen places where the four documents could not all be
-implemented at once, plus one pattern they did not know about. Twelve have been applied back to
-the documents in `../../docs/facility-rethink/` — model v0.22, matrix v0.12, flows v0.6,
-glossary v0.6 — and the rail marks which. Four things are still open there:
+Seventeen findings are built in — places where the four documents could not all be implemented
+at once, plus two things they did not know about. Fifteen have been applied back to the documents
+in `../../docs/facility-rethink/` — model v0.23, matrix v0.13, flows v0.7, glossary v0.7 — and
+the rail marks which. Four things are still open there:
 
 - **§10.10 — does appointment-driven binding need the empty check `ASSIGN_SHIPMENT` has?**
   An operational decision, not an editorial one, so it is written up as an open item with a
@@ -104,7 +108,7 @@ you are standing — they keep the scenario, the step and the state with them.
 
 ## Source documents
 
-Built against `yard-dock-operations-model.md` v0.22, `flows.md` v0.6,
-`action-availability-matrix.md` v0.12 and `glossary.md` v0.6, which live beside this bench in
+Built against `yard-dock-operations-model.md` v0.23, `flows.md` v0.7,
+`action-availability-matrix.md` v0.13 and `glossary.md` v0.7, which live beside this bench in
 `../../docs/facility-rethink/`. Every section reference in the page points into them, and the
 two should be changed together — that is the whole arrangement.
