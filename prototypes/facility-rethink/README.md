@@ -40,7 +40,11 @@ Not a UI prototype. It is the document set's own rules, implemented once and exe
 
 ## What you can do with it
 
-Seventeen scenarios: the seven flows of `flows.md` walked step by step against their own script,
+Seventeen scenarios: the seven flows of `flows.md` walked step by step against their own script —
+and three of them now **start before the appointment does**, building the load a pickup driver
+turns up for: trailer chosen, shipment assigned, dock, spotter, crew, fill, seal, optionally back
+to the yard. Eleven steps and four people that the documents had as one row reading "already
+loaded, waiting in the yard". Then
 eight exception branches drawn from the stress tests, and two built for §10.12 and §10.13. Each
 step declares what the documents say should change, and the bench marks it matched or not. Going
 off script is allowed; the flow just stops predicting.
@@ -90,10 +94,18 @@ Two scenarios sit in that group:
 
 ## Findings
 
-Twenty-five findings are built in — places where the four documents could not all be implemented
-at once, plus eight things they did not know about. Twenty-three have been applied back to the
-documents in `../../docs/facility-rethink/` — model v0.27, matrix v0.19, flows v0.11,
-glossary v0.14 — and the rail marks which. Seven things are still open there:
+Thirty-two findings are built in — places where the four documents could not all be implemented
+at once, plus thirteen things they did not know about. Thirty have been applied back to the
+documents in `../../docs/facility-rethink/` — model v0.29, matrix v0.21, flows v0.12,
+glossary v0.16 — and the rail marks which. Nine things are still open there:
+
+- **Are `PULL_FROM_DOCK` and `CREATE_MOVE_TASK` one action (F32, model §10.17)?** The behaviour
+  is right either way; the name is what the event log records. Recommended: merge, behind a
+  label derived from position.
+
+- **What a returned-freight row is (F31, model §10.16).** A driver dropping a trailer off can say
+  it is empty and cannot say a delivery came back on it. Three candidate shapes, and two of them
+  are cheap because they lie. Recommended: a third row origin.
 
 - **Nothing converts a live visit to a drop (F22, model §10.15).** Drivers decide not to wait;
   the catalog has no action for it, and the two that were standing in for it — the yard-team
@@ -144,7 +156,7 @@ you are standing — they keep the scenario, the step and the state with them.
 
 ## Source documents
 
-Built against `yard-dock-operations-model.md` v0.27, `flows.md` v0.11,
-`action-availability-matrix.md` v0.19 and `glossary.md` v0.14, which live beside this bench in
+Built against `yard-dock-operations-model.md` v0.29, `flows.md` v0.12,
+`action-availability-matrix.md` v0.21 and `glossary.md` v0.16, which live beside this bench in
 `../../docs/facility-rethink/`. Every section reference in the page points into them, and the
 two should be changed together — that is the whole arrangement.

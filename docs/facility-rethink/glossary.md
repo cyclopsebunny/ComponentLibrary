@@ -1,8 +1,17 @@
 # Glossary — Canonical Terms
 
-**Companion to:** `yard-dock-operations-model.md` v0.27, `action-availability-matrix.md` v0.19
-**Status:** Draft v0.14 — spot-in to pull-out, whatever pulls it out
+**Companion to:** `yard-dock-operations-model.md` v0.29, `action-availability-matrix.md` v0.21
+**Status:** Draft v0.16 — reporting a blocked dock is not choosing a spot
 **Purpose:** The single source of truth for every entity, state, action, flag, and label. When this document and another disagree, this one is wrong and should be corrected — but until it is, it is what the product, the training material, and support should say.
+
+### Changes from v0.15
+- **`PULL_FROM_DOCK`** (§7): names no destination, and is owned by the dock lead, the dispatcher and the yard team. Whether it and `CREATE_MOVE_TASK` should be one action is model §10.17.
+- **`ADVANCE_READINESS`**: not at a dock.
+
+### Changes from v0.14
+- **Empty verification** (§5.1): retired the moment freight goes aboard, and owned by whoever can see inside — the yard team on a return, the gate where no cleaning is needed, the driver who dropped it off. It was the gate's alone (model §3.6.6, §9 #6).
+- **`ADVANCE_READINESS`** (§7): two transitions, named apart.
+- **"Backhaul" / "came back"** added to §2 as a term the documents do not yet have an entity for (model §10.16).
 
 ### Changes from v0.13
 - **`DockStay` entry** (§3): `pulled_at` is set by the trailer leaving the dock, whatever takes it off — including the driver of a live load pulling off himself, which no action's effects had covered (model §2.6).
@@ -75,6 +84,7 @@ The highest-value section. Each of these will be said in meetings; none should a
 | **"Spotted"** (loosely) | Means placed **at a dock** — not "at any destination" | `AT_DESTINATION` for the general case; `SPOTTED` only for a sensor-confirmed dock |
 | **"Full"** (of a trailer) | The system cannot know fullness with multiple shipments | `fill_declaration = COMPLETE` / "fill complete" |
 | **"Drop"** (bare) | Either the appointment type or the physical unhooking | `visit_type = DROP` for the type; `DROP_TRAILER` for unhooking |
+| **"Backhaul"**, **"came back"**, **"returned freight"** | A delivery that did not happen and is still on the trailer — refused, a stop missed, an overage. **No entity for it yet**: the row it becomes is model §10.16's open question, and the three candidate shapes answer differently | Say "freight that came back" until the row has a name. Do **not** say backhaul for planned return loads, which are ordinary outbound shipments |
 | **"Spot"** (bare) | A yard position, or the act of placing a trailer at a dock | "yard spot" for the place; `COMPLETE_MOVE` / "spotted" for the act |
 | **"Trailer status"** | There is no single status; there are six dimensions | Name the dimension: load state, position, destination, readiness |
 | **"Available"** (of a trailer) | Ambiguous between empty, unassigned, and ready | `AVAILABLE_FOR_ASSIGNMENT` — all four conditions, §6 |
@@ -163,7 +173,7 @@ Names that appeared in earlier drafts and no longer exist. Listed so old notes r
 | Action | Owners | Because |
 |---|---|---|
 | `BIND_TRAILER_TO_LEG` | Driver, Gate | flows names the actor `Guard / driver` — the driver does it by self-registering, the guard by typing it in |
-| `ADVANCE_READINESS` | Yard team, Supervisor | flows names the actor `Wash / maintenance` |
+| `ADVANCE_READINESS` | Yard team, Supervisor | flows names the actor `Wash / maintenance`. **Two transitions, two names**: "begin the readiness work" and "record the readiness outcome". One label for both reads as the same step offered twice (model §5.5) |
 | `DECLARE_FILL_COMPLETE` | Dock lead, Supervisor | `roles_can_declare_fill_complete` is a list and defaults to both |
 | `RESOLVE_IDENTIFICATION` | Clerk, Gate, Supervisor | permitted to all three; the guard's own reading is one of the two sources being reconciled |
 
@@ -187,7 +197,7 @@ The first two are the Actor column being read as prose when it is really a set. 
 | **Readiness** | `NOT_READY` · `IN_PREP` · `READY` | Facility-configured requirements. Empty list ⇒ always `READY` |
 | **Service** | `IN_SERVICE` · `OUT_OF_SERVICE` | Damage, reefer failure, DOT hold |
 | **Fill declaration** | `OPEN` · `COMPLETE` | Human judgment; the system cannot infer fullness. **About an outbound load this facility put on**, not about the trailer's fullness in general — it is `OPEN` on a loaded inbound trailer and means nothing there (model §3.2) |
-| **Empty verification** | `UNVERIFIED` · `CLAIMED_EMPTY` · `VERIFIED_EMPTY` | Driver claim at the gate, with optional physical check |
+| **Empty verification** | `UNVERIFIED` · `CLAIMED_EMPTY` · `VERIFIED_EMPTY` | Driver claim at the gate, with optional physical check. **Retired to `UNVERIFIED` the moment anything is aboard** — a trailer cannot be verified empty and hold freight, whatever was true earlier (model §3.6.6). Confirmed by whoever can see inside: yard team, gate, or the driver dropping it off |
 | **Identity confidence** | `CORROBORATED` · `SINGLE_SOURCE` · `DISPUTED` | Derived from identification readings |
 | **Tractor** | `ATTACHED` · `NONE` | **Stored, not derived.** Nothing else in the model records whether a tractor is on the trailer, so there is nothing to compute it from. Set on arrival by `BIND_TRAILER_TO_LEG` for a BRING leg and by `HOOK_TRAILER`; cleared by `DROP_TRAILER` and `CHECK_OUT`. Decides whether movement is a task or a destination (§6.3) |
 
@@ -238,6 +248,7 @@ Inbound rows begin at `ON_BOARD` — the freight is already aboard, so there is 
 | `REGISTER_AND_ADMIT` | The single-step kiosk path. Writes the same dimensions as the two-stage path |
 | `HOLD_OUTSIDE` | Holds a visit outside the fence when no dock and no in-gate space is available |
 | `BIND_TRAILER_TO_LEG` | Attaches a trailer to a leg. Creates the trailer record if the number is new, **and creates the TrailerLoad rows from the leg's shipments** — `ON_BOARD` for BRING, `ASSIGNED` for TAKE |
+| `DECLARE_BACKHAUL` | **Not a catalog action** — the bench's own, so it is marked ENGINE on screen. Records a delivery that came back, which is the other answer at drop-off and the one §5 cannot give (model §10.16) |
 | `VERIFY_EMPTY` | Physically confirms a trailer is empty. Optional |
 | `AUTHORIZE_DEPARTURE` | **Authorizes departure.** Verifies legs, freight match, fill complete, seal, no open work. *Formerly `CLEAR_VISIT`* |
 | `CHECK_OUT` | Records the actual departure. Requires `AUTHORIZED_TO_DEPART` |
@@ -277,7 +288,7 @@ Inbound rows begin at `ON_BOARD` — the freight is already aboard, so there is 
 | `CANCEL_SESSION` | Abandons the session. Supervisor role if `ACTIVE` |
 | `DECLARE_FILL_COMPLETE` | Declares no more freight is going on **this outbound load**. Gates sealing and departure. Needs an outbound row already `ON_BOARD`, which means after a dock session has run — read as "freight aboard" it was available on a loaded inbound trailer outside the fence (model §3.2) |
 | `REOPEN_FILL` | Reverses it, with a reason |
-| `PULL_FROM_DOCK` | Requests removal from the dock; closes the DockStay on move start |
+| `PULL_FROM_DOCK` | Requests removal from the dock; closes the DockStay on move start. **Names no destination** — it reports that the dock is needed, and the spot is chosen by whoever knows the yard (model §5.3). Owned by the dock lead, the dispatcher and the yard team. Whether this and `CREATE_MOVE_TASK` are one action is model §10.17 |
 
 ### 6.5 Shipment
 

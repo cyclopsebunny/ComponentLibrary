@@ -9,6 +9,7 @@ Four documents, one subject, deliberately different cuts. Each answers a differe
 | Question | Document |
 |---|---|
 | "Walk me through an inbound live load, step by step" | **flows.md** |
+| "Who builds the load a pickup driver turns up for, and when?" | **flows.md** §2.1 — before the appointment exists |
 | "What is the difference between an outbound pickup and an outbound preload?" | **flows.md** §6, §6a |
 | "What can a user do to *this* trailer right now?" | **action-availability-matrix.md** |
 | "Who can act right now, and who is waiting on whom?" | **action-availability-matrix.md** §1.8 — and it says what is still missing |
@@ -66,12 +67,12 @@ Five things that, if lost, make the rest incoherent:
 
 | Document | Version | Size |
 |---|---|---|
-| yard-dock-operations-model.md | v0.27 | ~199 KB |
-| flows.md | v0.11 | ~30 KB |
-| action-availability-matrix.md | v0.19 | ~45 KB |
-| glossary.md | v0.14 | ~34 KB |
+| yard-dock-operations-model.md | v0.29 | ~210 KB |
+| flows.md | v0.12 | ~36 KB |
+| action-availability-matrix.md | v0.21 | ~48 KB |
+| glossary.md | v0.16 | ~36 KB |
 
-**39 decisions resolved. 15 items open** (model §10). The model is decided enough to build.
+**39 decisions resolved. 17 items open** (model §10). The model is decided enough to build.
 
 **§10.12 and §10.13 should be decided together** — custody spans are what make the two-visit
 appointment cheap to support, and both are entity shape rather than behaviour.
@@ -97,7 +98,7 @@ every other that sealing needed freight aboard, and none of them asked *whose* f
 
 ### Known maintenance risks
 
-- **The model document is too large.** At ~199 KB it is past the size where a sequential edit can silently delete a section — this has already happened once. It should be split into domain model, decision log, and UI spec. The v0.21 round was edited by targeted replacement only, and §10 has grown since.
+- **The model document is too large.** At ~210 KB it is past the size where a sequential edit can silently delete a section — this has already happened once. It should be split into domain model, decision log, and UI spec. The v0.21 round was edited by targeted replacement only, and §10 has grown since.
 - **Four documents will drift.** Nothing enforces consistency. The glossary is designated the tiebreaker, which only works if it is the document people actually open.
 - ~~`CLEAR_VISIT` naming inconsistency~~ — **resolved in v0.20**: renamed `AUTHORIZE_DEPARTURE`. ~~`fill_declaration` wording~~ — **resolved in glossary v0.8**. Two naming items remain open in glossary §11.
 

@@ -1,8 +1,19 @@
 # Action Availability Matrix
 
-**Companion to:** `yard-dock-operations-model.md` v0.26
-**Status:** Draft v0.19 — sealing is for a load going out
+**Companion to:** `yard-dock-operations-model.md` v0.29
+**Status:** Draft v0.21 — one job, one control
 **Purpose:** For any trailer in any state, define which actions appear, which appear disabled, which are hidden, and what the user is told — so a screen can be built without re-deriving preconditions from the action catalog.
+
+### Changes from v0.20
+Reported from the idle dock: two controls for one job, one of them a dead end.
+- **§2.5:** `CREATE_MOVE_TASK` is **H** at a dock, not **D**. `PULL_FROM_DOCK` is the action there and needs no destination first, so the disabled twin was §1.1's hidden case — a reason naming a step that is not the way forward.
+- **§2.5:** `ADVANCE_READINESS` is **H** at a dock.
+
+### Changes from v0.19
+Reported: the planner could not put a shipment on a yard trailer once the driver coming to collect it had registered.
+- **§2.1:** the `AT_FACILITY` column is about the trailer that is **arriving**. `ASSIGN_SHIPMENT`'s **H** and `CREATE_MOVE_TASK`'s **D** were read as properties of the visit's presence, which blocks work on a trailer that has been in the yard for hours (model §9 #2).
+- **§2.3:** `ASSIGN_DOCK` on a parked trailer is **A** once it has a load planned onto it — `ASSIGN_SHIPMENT` now puts it in the queue, and without that the cell was unreachable (model §5.4).
+- **§1.8:** an action may need to **name itself differently** depending on the transition it is about to make — `ADVANCE_READINESS` is two jobs and read as one step offered twice.
 
 ### Changes from v0.18
 Reported from operations: a dock worker cannot seal a trailer on an inbound load — not before it is loaded, and not once it is unloaded or empty. Breaking a seal is unaffected.
@@ -179,6 +190,9 @@ The primary is the highest-priority action that is **available**, which means a 
 
 ### 1.8 Who can act, and who is waiting on whom
 
+**An action may have to name itself differently depending on what it is about to do.** `ADVANCE_READINESS` covers two transitions — starting the wash and inspection, and recording what they found — done by different people at different times. Labelled by the action, a board shows the same step twice and a reader cannot tell which of the two is in front of them. The label belongs to the *transition*, so it is derived like the treatment is: "begin the readiness work", then "record the readiness outcome". Any action whose effects branch on current state needs the same treatment.
+
+
 Everything above answers "what can be done to this trailer". A yard also asks a question this document cannot currently answer: **who can act right now, who is waiting on whom, and what can proceed in parallel.** Two pieces are missing, and both are data rather than prose.
 
 **An owning role on every action.** §3.4 names permission gates for five actions and is silent on who performs the other thirty-five. flows has an Actor column, but its §12 calls those placeholders. So nothing can group actions by the person who takes them, and a screen is left offering every action to everybody and refusing most of them afterwards. Add an owning role to each entry in the model's action catalog, drawn from a roster the glossary owns (glossary §4.1).
@@ -239,12 +253,14 @@ A single column cannot express these contexts, because presence and destination 
 | `BIND_TRAILER_TO_LEG` | **A** | **A** — usually already done by self-registration | **A** | **A** for an unresolved TAKE leg |
 | `TURN_AWAY` | **H** | **A** — cancels registration and releases any held dock | **A** | **A** |
 | `RESOLVE_IDENTIFICATION` | **H** | **H** — no read yet | **A** if disputed | **A** if disputed |
-| `CREATE_MOVE_TASK` | **H** | **D** "Admit the visit first" | **D** "Admit the visit first" | **A** |
-| `ASSIGN_SHIPMENT` | **H** "Trailer is not on site" | **H** — at the facility but not through the gate (§9 #2) | **H** | per §2.2 |
+| `CREATE_MOVE_TASK` | **H** | **D** "Admit the visit first" — again only for **this visit's arriving trailer**; a spotter may move a yard trailer while a later pickup's driver waits at the gate | **D** "Admit the visit first" | **A** |
+| `ASSIGN_SHIPMENT` | **H** "Trailer is not on site" | **H** — at the facility but not through the gate (§9 #2), **for the trailer that is arriving on this visit**. A trailer already in the yard is unaffected: it is not outside the gate because a driver coming to collect it later has registered | **H** | per §2.2 |
 
 **What this table leaves out is load-bearing, and nothing enforces it.** §2 is keyed on position, so an action's absence from a position's table is this document's way of saying "not available there" — it is the *only* place that is said. Model §5 carries a position precondition on one action out of forty (`ASSIGN_SHIPMENT`, `position ≠ OFF_SITE`), so anything built from the catalog alone offers dock actions on trailers that are not here: the fill declaration and then sealing were both offered on a loaded inbound trailer that had scanned the QR sign and was standing outside the fence. The fix belongs in model §5, not here — every action needs its position precondition written in.
 
 **`OFF_SITE` is nearly empty, and that is correct.** Nothing can be done to a visit that has not announced itself — and it cannot announce itself remotely (§9 #31). A trailer record that departed previously still exists, so it can be bound to a future leg or marked out of service, but not assigned freight.
+
+**Every cell in this table is about one trailer, and "the visit" in a reason is about the trailer that visit is bringing.** Read as a property of the visit's presence, the `AT_FACILITY` column stops work on trailers that are not arriving at all — which is most of the yard, on any appointment whose driver has scanned in. The distinction only appears on a pickup, where the trailer has been standing here for hours and the visit is the one coming to collect it.
 
 **`AT_FACILITY` is the genuinely new column.** The driver has scanned in and is standing outside the fence: they can hold a dock, be reassigned, or be turned away, all before the gate opens. Everything physical stays blocked, and `CREATE_MOVE_TASK` is **D** rather than **H** because "Admit the visit first" names a real next step (§1.1) — and one that is minutes away, not hypothetical.
 
@@ -255,7 +271,7 @@ The trailer is inside the gate, identified, and not yet spotted. A real location
 | Action | | Condition / reason |
 |---|---|---|
 | `CREATE_MOVE_TASK` | A / D | **D** "Assign a dock or yard destination first" when `destination = AWAITING_ASSIGNMENT`. Otherwise the primary action here |
-| `ASSIGN_DOCK` | A / H | **A** while `AWAITING_ASSIGNMENT` — and the top of the dock-assignment queue, since detention is running (§6.2) |
+| `ASSIGN_DOCK` | A / H | **A** while `AWAITING_ASSIGNMENT` — and the top of the dock-assignment queue, since detention is running (§6.2). **Also for a parked trailer once a shipment is planned onto it**: `ASSIGN_SHIPMENT` moves it from `NONE` to `AWAITING_ASSIGNMENT`, because a trailer with a load to put in needs a dock (model §5.4). Without that transition this cell was unreachable for the commonest preload there is |
 | `RELEASE_DOCK` | A / H | **A** if a dock is `HELD` |
 | `ASSIGN_SHIPMENT` | A / D / H | **A** normally. **D** if out of service. **H** if the trailer holds inbound freight (§1.1) |
 | `VERIFY_EMPTY` | A / H | **H** if freight aboard |
@@ -329,7 +345,7 @@ The busiest context, and where a single "trailer status" field would fail hardes
 | `DECLARE_FILL_COMPLETE` | **A** *if an outbound load is already aboard from an earlier session* — otherwise **H**, nothing has been loaded yet | **D** "End or cancel the open session first" | **D** "Work is in progress at the dock" | **A** |
 | `SEAL_TRAILER` | **A**/**D** — same multi-session proviso; **H** on an unload session's trailer, which has no outbound load aboard | **D** session open | **D** session active | **A**/**D** needs fill complete; **H** after an unload |
 | `PULL_FROM_DOCK` | **A** | **D** "End or cancel the open session first" | **D** "Work is in progress at the dock" | **A** |
-| `CREATE_MOVE_TASK` | **A** | **D** same reason | **D** same reason | **A** |
+| `CREATE_MOVE_TASK` | **H** — at a dock the action is `PULL_FROM_DOCK`, which needs no destination first; two controls for one job, one of them disabled, is §1.1's hidden case (model §10.17) | **H** | **H** | **H** |
 | `CORRECT_TRAILER_IDENTITY` | **A** supervisor | **A** supervisor | **D** "Cannot renumber during active work" | **A** supervisor |
 | `MARK_OUT_OF_SERVICE` | **A** | **A** | **A** — does **not** cancel the session (§5.5) | **A** |
 

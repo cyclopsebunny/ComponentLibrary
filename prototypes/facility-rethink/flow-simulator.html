@@ -461,7 +461,7 @@ dialog footer{padding:11px 15px; border-top:1px solid var(--line); display:flex;
 <header class="top">
   <span class="brand">
     <b>Yard Flow Bench</b>
-    <span>Walks the yard &amp; dock document set against itself — model v0.27 · flows v0.11 · matrix v0.19 · glossary v0.14</span>
+    <span>Walks the yard &amp; dock document set against itself — model v0.29 · flows v0.12 · matrix v0.21 · glossary v0.16</span>
   </span>
   <span class="topctl">
     <button class="mini" id="cfgbtn" type="button">Facility config</button>
@@ -921,6 +921,26 @@ function syncStays(w){
        that contains it. releasePosition() frees the dock without touching the
        span, which is exactly the kind of omission a per-action write invites.
        Finding F25. */
+    /* Reported: an outbound pickup showed load state HAS_FREIGHT beside empty
+       verification VERIFIED_EMPTY, on a trailer that was also sealed with fill
+       complete. It cannot be all of those.
+
+       The asymmetry is in the catalog: END_SESSION sets VERIFIED_EMPTY when no
+       rows remain, so unloading *establishes* emptiness — and nothing anywhere
+       clears the claim when freight goes aboard. The claim was true once and
+       nothing retired it. Same shape as F15, where only one direction of the
+       freight match was specified.
+
+       Handled here rather than in each action's effects for the reason the
+       DockStay is: an invariant that has to hold after every action should not
+       be re-derived in each of them. Finding F26. */
+    if (t.empty_verification!=="UNVERIFIED" && rowsOf(w,t.id).some(r =>
+        r.link_state==="ON_BOARD" || r.link_state==="PART_LOADED" ||
+        r.link_state==="LOADING")){
+      t.empty_verification = "UNVERIFIED";
+      log("sys","Freight is aboard <b>"+t.number+"</b> — the empty verification is "+
+        "retired (§9 #6). A trailer cannot be verified empty and hold freight.");
+    }
     const atDock = t.position==="DOCK";
     const dOpen = w.dockStays.find(x => x.trailer_id===t.id && x.pulled_at==null);
     if (!atDock && dOpen){
@@ -1457,8 +1477,56 @@ BIND_TRAILER_TO_LEG:{
   }
 },
 
+/* Reported: the driver who drops a trailer off should be able to say it is
+   empty *or* that freight came back on it — a refused delivery, a missed stop.
+   The catalog has the first and not the second, so a returning trailer with
+   freight on it could only be recorded by unloading a shipment the system did
+   not know was there. Marked ENGINE because the bench invented it; what a
+   returned-freight row actually *is* is a modelling decision, written up as
+   model §10.16. Finding F31. */
+DECLARE_BACKHAUL:{
+  label:"Freight came back on it", on:"trailer", engine:true,
+  actor:"Yard team / guard / driver", ref:"no catalog action — model §10.16",
+  gate(w,c){
+    const t = c.t;
+    if (!t) return [H(CLS.STRUCTURAL,"No trailer in context")];
+    if (rowsOf(w,t.id).length) return [H(CLS.STRUCTURAL,"Freight is already recorded aboard")];
+    if (t.empty_verification==="VERIFIED_EMPTY")
+      return [H(CLS.STRUCTURAL,"Already confirmed empty — break that first if it was wrong")];
+    if (!onSite(t) && t.position!=="LOT") return [H(CLS.PHYSICAL,"Trailer is not here")];
+    if (t.intake==="AWAITING_INTAKE") return [D(CLS.DATA,"Take the trailer in first")];
+    return svc(w,t);
+  },
+  form(){ return [{k:"why", label:"Why it came back", type:"select", options:[
+    ["REFUSED","The consignee refused the delivery"],
+    ["MISSED","A stop was missed"],
+    ["OVERAGE","Overage — more came back than the manifest named"]]}]; },
+  apply(w,c,vals){
+    const t = c.t;
+    const id = "RET-"+(w.seq++);
+    const why = {REFUSED:"refused by the consignee", MISSED:"stop missed",
+                 OVERAGE:"overage"}[vals.why] || vals.why;
+    mkShipment(w,{id, direction:"INBOUND", consignee:"Came back — "+why});
+    w.shipments[id].status = "ARRIVED";
+    w.shipments[id].returned = true;
+    mkLoad(w, id, t.id, "ON_BOARD");
+    t.empty_verification = "UNVERIFIED";
+    log("act","<b>DECLARE_BACKHAUL</b> — "+id+" recorded aboard <b>"+t.number+"</b> ("+why+
+      "). The trailer is not empty and is not assignable until this comes off.");
+    log("dev","<b>ENGINE ACTION</b> — §5 has no way to record freight that came back, so this "+
+      "is the bench's. It files the return as an <b>INBOUND</b> row, which is the cheapest "+
+      "shape and probably the wrong one: nobody consigned it here. See §10.16.");
+  }
+},
+
 VERIFY_EMPTY:{
-  label:"Verify empty", on:"trailer", actor:"Guard", ref:"model §5.1 (§9 #6)",
+  label:"Confirm the trailer is empty", on:"trailer",
+  /* Reported: the gate was the only place this could be done. The yard team
+     are the people who open the trailer and clean it, so on a return they are
+     the ones who can see it is empty; the gate is right when no cleaning is
+     required; and the driver who dropped it off can say so himself. Three
+     owners, which the actor field can now express as a set (F20). Finding F30. */
+  actor:"Yard team / guard / driver", ref:"model §5.1 (§9 #6)",
   gate(w,c){
     if (!c.t) return [H(CLS.STRUCTURAL,"No trailer in context")];
     /* §5.1 says "load state EMPTY", but an outbound live load is ASSIGNED_ONLY
@@ -1921,10 +1989,26 @@ CREATE_MOVE_TASK:{
     if (!t) return [H(CLS.STRUCTURAL,"No trailer in context")];
     if (hasTractor(w,t.id)) return [H(CLS.STRUCTURAL,"Trailer has a driver — it needs a destination, not a task")];
     if (openMove(w,t.id)) return [D(CLS.PHYSICAL, WHY.MOVE_OPEN)];
+    /* At a dock the action for this is PULL_FROM_DOCK, which needs no
+       destination first. Two controls for one job, one of them a dead end
+       reading "assign a dock or yard destination first", is matrix §1.1's
+       hidden case exactly. Finding F32. */
+    if (t.position==="DOCK")
+      return [H(CLS.STRUCTURAL,"At a dock the request is to free the dock — that is one action, not two")];
     const f = [];
     if (!onSite(t) && t.position!=="LOT") f.push(H(CLS.PHYSICAL,"Trailer is not on site"));
     const v = c.v;
-    if (v && ["AT_FACILITY","AT_GATE"].includes(v.presence)) f.push(D(CLS.PHYSICAL, WHY.NOT_ADMITTED));
+    /* Scoped to a trailer that is ARRIVING on this visit. A trailer standing
+       in the yard is not waiting on the gate just because the driver of a
+       later pickup is outside the fence — matrix §2.1's AT_FACILITY column is
+       about the arriving trailer, and keying it on the visit's presence
+       conflates "this trailer has not cleared the gate" with "some visit
+       naming this trailer has not". On a pickup those are different, and the
+       planner could not put a shipment on a yard trailer once its driver had
+       registered. Finding F28. */
+    if (v && ["AT_FACILITY","AT_GATE"].includes(v.presence) &&
+        (bringLeg(w,v)||{}).trailer_id===t.id)
+      f.push(D(CLS.PHYSICAL, WHY.NOT_ADMITTED));
     if (t.destination==="AWAITING_ASSIGNMENT" || t.destination==="NONE")
       f.push(D(CLS.DATA, WHY.NO_DEST));
     if (atDestination(w,t)) f.push(H(CLS.STRUCTURAL,"Already at its destination"));
@@ -1943,15 +2027,32 @@ CREATE_MOVE_TASK:{
 },
 
 ASSIGN_MOVE_TASK:{
-  label:"Assign move to a spotter", on:"trailer", actor:"Dispatcher", ref:"model §5.2",
+  label:"Assign move to a spotter", on:"trailer",
+  actor:"Dispatcher / yard team", ref:"model §5.2",
   gate(w,c){
     const m = c.t && openMove(w,c.t.id);
     if (!m) return [H(CLS.STRUCTURAL,"No open move task")];
     if (m.state!=="PENDING") return [H(CLS.STRUCTURAL,"Already assigned")];
     return [];
   },
-  apply(w,c){
+  /* Where a request named no spot — "get it off this dock" — this is where the
+     spot gets chosen, by the person who knows the yard. Optional, because the
+     spotter may also just place it and report at COMPLETE_MOVE. Finding F32. */
+  form(w,c){
     const m = openMove(w,c.t.id);
+    if (m && m.requested_destination && m.requested_destination!=="YARD") return [];
+    return [{k:"dest", label:"Where to — or leave it to the spotter", type:"select",
+      options: [["YARD","Anywhere free — the spotter decides"]].concat(
+        Object.values(w.spots).filter(x=>!x.occupants.length).map(x => ["SPOT "+x.id,"Spot "+x.id]),
+        Object.values(w.lots).map(l => ["LOT "+l.id, l.inside_fence?"Inside lot":"Outside lot"]))}];
+  },
+  apply(w,c,vals){
+    const m = openMove(w,c.t.id);
+    if (vals && vals.dest && vals.dest!=="YARD"){
+      m.requested_destination = vals.dest;
+      c.t.requested_destination = vals.dest;
+      log("sys","Spot named here rather than by whoever asked for the move — <b>"+vals.dest+"</b>.");
+    }
     m.state = "ASSIGNED";
     m.assignee = pick(SPOTTERS, w.custody.length + w.moves.length);
     log("act","<b>ASSIGN_MOVE_TASK</b> — to "+m.assignee+
@@ -2312,7 +2413,16 @@ REOPEN_FILL:{
 },
 
 PULL_FROM_DOCK:{
-  label:"Pull from dock", on:"trailer", actor:"Dock lead", ref:"model §5.3",
+  label:"Get it off this dock", on:"trailer",
+  /* Reported: this and CREATE_MOVE_TASK read as two jobs for two people when
+     they are one job — "this trailer needs to move" — distinguished only by
+     where it starts. And the dock lead was being asked "where to", from a list
+     of yard spots. He knows the dock is needed; he does not know the yard.
+     So: one control at a dock (CREATE_MOVE_TASK is hidden there now), no
+     destination field, and anyone who can see the problem may raise it.
+     The spot is chosen by the dispatcher when assigning, or by the spotter on
+     the ground at COMPLETE_MOVE. Finding F32. */
+  actor:"Dock lead / dispatcher / yard team", ref:"model §5.3 · §10.17",
   gate(w,c){
     const t = c.t;
     if (!t) return [H(CLS.STRUCTURAL,"No trailer in context")];
@@ -2323,15 +2433,17 @@ PULL_FROM_DOCK:{
     if (openMove(w,t.id)) return [D(CLS.PHYSICAL, WHY.MOVE_OPEN)];
     return [];
   },
-  form(w){ return [{k:"dest", label:"Where to", type:"select",
-    options: Object.values(w.spots).filter(s=>!s.occupants.length).map(s => ["SPOT "+s.id,"Spot "+s.id])
-      .concat(Object.values(w.lots).map(l => ["LOT "+l.id, l.inside_fence?"Inside lot":"Outside lot"]))}]; },
-  apply(w,c,vals){
+  apply(w,c){
     const t = c.t;
-    t.destination = "YARD_ASSIGNED"; t.requested_destination = vals.dest;
-    w.moves.push({id:"MV"+(w.seq++), trailer_id:t.id, requested_destination:vals.dest,
+    /* "YARD" rather than a spot: the request is that the dock be freed, and
+       where it goes is somebody else's call. COMPLETE_MOVE still demands a
+       real placement — there is no "moved, location unknown". */
+    t.destination = "YARD_ASSIGNED"; t.requested_destination = "YARD";
+    w.moves.push({id:"MV"+(w.seq++), trailer_id:t.id, requested_destination:"YARD",
       state:"PENDING", at:w.clock});
-    log("act","<b>PULL_FROM_DOCK</b> — move task created; the DockStay closes on <b>START_MOVE</b>.");
+    log("act","<b>PULL_FROM_DOCK</b> — move task created, <b>no spot named</b>. The dock is the "+
+      "problem being reported; the destination is the dispatcher's or the spotter's. The "+
+      "DockStay closes on <b>START_MOVE</b>.");
   }
 },
 
@@ -2348,7 +2460,16 @@ ASSIGN_SHIPMENT:{
     if (t.position==="OFF_SITE") return [H(CLS.PHYSICAL,"Trailer is not on site")];
     if (t.position==="IN_MOTION") return [H(CLS.PHYSICAL,"Trailer is in motion")];
     const v = c.v;
-    if (v && ["AT_FACILITY","AT_GATE"].includes(v.presence))
+    /* Scoped to a trailer that is ARRIVING on this visit. A trailer standing
+       in the yard is not waiting on the gate just because the driver of a
+       later pickup is outside the fence — matrix §2.1's AT_FACILITY column is
+       about the arriving trailer, and keying it on the visit's presence
+       conflates "this trailer has not cleared the gate" with "some visit
+       naming this trailer has not". On a pickup those are different, and the
+       planner could not put a shipment on a yard trailer once its driver had
+       registered. Finding F28. */
+    if (v && ["AT_FACILITY","AT_GATE"].includes(v.presence) &&
+        (bringLeg(w,v)||{}).trailer_id===t.id)
       return [H(CLS.PHYSICAL,"At the facility but not through the gate")];
     if (t.intake==="AWAITING_INTAKE") return [D(CLS.DATA,"Take the trailer in first")];
     const f = svc(w,t);
@@ -2372,6 +2493,20 @@ ASSIGN_SHIPMENT:{
     mkLoad(w, vals.sh, c.t.id, "ASSIGNED");
     w.shipments[vals.sh].status = "ASSIGNED";
     log("act","<b>ASSIGN_SHIPMENT</b> — row created <b>ASSIGNED</b> for "+vals.sh+".");
+    /* A parked trailer that has just been given freight is now seeking a dock.
+       glossary's AWAITING_DOCK is "needs a dock", and this is a trailer that
+       needs one. Without this the destination stays NONE, ASSIGN_DOCK stays
+       hidden — "nothing to assign to yet, no destination is being sought" —
+       and a trailer with a load planned onto it can never be sent to a dock
+       to have that load put in. Nothing else in §5 moves a parked trailer
+       into the queue: DROP_TRAILER does it for one the driver leaves behind,
+       and there is no equivalent for one already standing in the yard.
+       Finding F29. */
+    if (c.t.position!=="DOCK" && c.t.destination==="NONE"){
+      c.t.destination = "AWAITING_ASSIGNMENT";
+      log("sys","<b>destination → AWAITING_ASSIGNMENT</b> — it has freight to load, so it is "+
+        "in the dock-assignment queue now (§3.6.3).");
+    }
     if (c.t.empty_verification==="CLAIMED_EMPTY")
       log("dev","<b>UNVERIFIED_ASSIGNMENT</b> — assigned on a driver's claim, never physically checked (§9 #6).");
   }
@@ -2511,11 +2646,26 @@ INTAKE_TRAILER:{
 ADVANCE_READINESS:{
   label:"Work readiness requirements", on:"trailer", actor:"Wash / maintenance",
   ref:"model §5.5 — added in v0.21",
+  /* The two transitions are different jobs done by different people at
+     different times: starting the wash and inspection, and recording what they
+     found. Finding F30. */
+  labelOf(w,c){
+    const reqs = (w.config.readiness_requirements||[]).join(", ");
+    return (c.t && c.t.readiness==="NOT_READY")
+      ? "Begin readiness work" + (reqs ? " ("+reqs+")" : "")
+      : "Record the readiness outcome";
+  },
   gate(w,c){
     if (!readinessLive(w)) return [H(CLS.STRUCTURAL,
       "No readiness requirements configured — the dimension does not exist here")];
     if (!c.t) return [H(CLS.STRUCTURAL,"No trailer in context")];
     if (c.t.readiness==="READY") return [H(CLS.STRUCTURAL,"Requirements already met")];
+    /* Reported from the idle dock, where this was offered on a trailer holding
+       a dock. Washing and inspection happen in the yard or the wash bay, and
+       a trailer occupying a dock has a more urgent problem. Another instance
+       of position being a precondition the catalog never stated (F21). */
+    if (c.t.position==="DOCK")
+      return [H(CLS.PHYSICAL,"Not at a dock — readiness work happens in the yard or the wash bay")];
     if (c.t.intake==="AWAITING_INTAKE") return [D(CLS.DATA,"Take the trailer in first")];
     return [];
   },
@@ -3056,10 +3206,76 @@ function applyStepFocus(){
   for (const i of o){
     const s = SCEN.script[i];
     if (!s.focus) continue;
-    if (s.focus.t) W.focusTrailer = s.focus.t;
+    /* by number, because a trailer bound at the gate has a generated id that
+       the script cannot name — and the pre-appointment run leaves the focus on
+       a different trailer than the driver's steps are about */
+    if (s.focus.num){
+      const t = Object.values(W.trailers).find(x => x.number===s.focus.num && !x.retired_into);
+      W.focusTrailer = t ? t.id : null;
+    } else if ("t" in s.focus) W.focusTrailer = s.focus.t;
     if (s.focus.v) W.focusVisit = s.focus.v;
     return;
   }
+}
+
+/* ---- the pre-appointment run ------------------------------------------- */
+/* Reported from operations: an outbound pickup does not begin when the driver
+   arrives. A trailer is chosen, the shipment is put on it, and the load is
+   built — dock, spotter, crew, fill, seal — before anybody registers at the
+   gate. Drop-and-hook and the company preload begin the same way for the
+   trailer the driver leaves with.
+
+   Written once because it is one pattern, and that is the finding: flows'
+   six phases read as a single order per appointment, and here the trailer
+   runs P2, P3 and P4 to completion before the driver's P1. These steps are
+   on their own track, so the driver may register while the load is still
+   being built — what he cannot do is be admitted before the load exists,
+   which is why ADMIT is the first `main` step in all three flows.
+   Finding F27. */
+function preAppointment(pre, tid){
+  const F = {t:tid}, L = "load";
+  const id = n => pre+n;
+  return [
+    st(id("1"),"P0","ASSIGN_SHIPMENT","Planner","**Before the appointment.** A planner puts the shipment on an empty trailer already standing in the yard. The driver has not arrived and is not involved in any of what follows.","model §5.4 · §9 #37",
+      w => rowsOf(w,tid).length ? [] : ["a TrailerLoad row should exist on this trailer"],
+      false, F, L),
+    st(id("2"),"P2","ASSIGN_DOCK","Dispatcher","A dock for the loading — assigned to the **trailer**, not to a visit. There is no visit on site, which is why destination is a trailer dimension (§3.6.3).","model §5.2 · §3.6.3",
+      null, false, F, L),
+    st(id("3"),"P3","CREATE_MOVE_TASK","Dispatcher","**No tractor is attached**, so getting it there is a task rather than a destination — model §3.5's whole distinction, and the reverse of a live load.","model §3.5",
+      w => w.moves.length ? [] : ["a move task should exist"], false, F, L),
+    st(id("4"),"P3","ASSIGN_MOVE_TASK","Dispatcher","To a spotter.","model §5.2", null, false, F, L),
+    st(id("5"),"P3","START_MOVE","Spotter","Yard-truck custody opens — the second kind of holder, and the reason `holder_type` exists (§10.12).","model §5.2 · §10.12",
+      w => { const c=custodyOpen(w,tid);
+        return c && c.holder_type==="YARD_TRUCK" ? [] : ["a yard-truck custody span should be open"]; },
+      false, F, L),
+    st(id("6"),"P3","COMPLETE_MOVE","Spotter","Spotted at the dock; the DockStay opens.","model §5.2",
+      w => w.dockStays.some(d=>d.trailer_id===tid && d.pulled_at==null) ? []
+        : ["a DockStay should be open"], false, F, L),
+    st(id("7"),"P4","OPEN_SESSION","Dock lead","A LOAD session, pre-populated with the row the planner made.","model §5.3",
+      w => { const x=openSession(w,tid);
+        return x && x.direction==="LOAD" ? [] : ["a LOAD session should be open"]; },
+      false, F, L),
+    st(id("8"),"P4","START_SESSION","Dock crew","Loading.","model §5.3", null, false, F, L),
+    st(id("9"),"P4","END_SESSION","Dock lead","Loaded. **The empty verification is retired here** — freight is aboard, so nothing can still describe this trailer as verified empty.","model §5.3 · §9 #6",
+      w => { const t=w.trailers[tid], o=[];
+        if (t.empty_verification!=="UNVERIFIED") o.push("the empty verification should have been retired");
+        if (loadState(w,tid)!=="HAS_FREIGHT") o.push("load state should be HAS_FREIGHT");
+        return o; }, false, F, L),
+    st(id("10"),"P4","DECLARE_FILL_COMPLETE","Dock lead","Nothing more is going on this load.","model §5.3",
+      w => w.trailers[tid].fill==="COMPLETE" ? [] : ["fill_declaration should be COMPLETE"],
+      false, F, L),
+    st(id("11"),"P4","SEAL_TRAILER","Dock lead","Sealed, and the shipment is `STAGED`. From here it is a pickup waiting for a driver who has not been mentioned once.","model §5.4",
+      w => w.trailers[tid].sealed ? [] : ["the trailer should be sealed"], false, F, L),
+    st(id("12"),"P3","PULL_FROM_DOCK","Dock lead","**Optional.** Send it back to the yard and free the dock, or leave it here until the driver comes for it. Both are normal and the rest of the flow adapts — this is the step the inbound drop was missing.","model §5.3",
+      null, false, F, L, true),
+    st(id("13"),"P3","ASSIGN_MOVE_TASK","Dispatcher","**Optional** — to a spotter.","model §5.2",
+      null, false, F, L, true),
+    st(id("14"),"P3","START_MOVE","Spotter","**Optional** — the DockStay closes here, and the dock is free for the next trailer.","model §5.2 · §2.6",
+      w => w.dockStays.every(d => d.trailer_id!==tid || d.pulled_at!=null) ? []
+        : ["the DockStay should have closed"], false, F, L, true),
+    st(id("15"),"P3","COMPLETE_MOVE","Spotter","**Optional** — parked in the yard, staged, waiting.","model §5.2",
+      null, false, F, L, true)
+  ];
 }
 
 const SCENARIOS = [
@@ -3227,36 +3443,57 @@ const SCENARIOS = [
     st("P3p4","P3","COMPLETE_MOVE","Spotter","Reports where it actually went.","flows §5 P3′"),
     st("P4","P4","OPEN_SESSION","Dock crew","Unload as flow 1.","flows §5 P4"),
     st("P4b","P4","START_SESSION","Dock crew","Unloading.","flows §5 P4"),
-    st("P4c","P4","END_SESSION","Dock lead","Rows closed; load state EMPTY.","flows §5 P4")
+    st("P4c","P4","END_SESSION","Dock lead","Rows closed; load state EMPTY.","flows §5 P4"),
+    /* Reported: the dock is still occupied by an empty trailer when the flow
+       ends. Pulling it back to the yard is optional — it can also wait there
+       for its next load — but leaving the step out made "the dock is never
+       freed" the only path the document described. flows §5 P4′. */
+    st("P4d","P3","PULL_FROM_DOCK","Dock lead","**Optional, and the reason the dock is still busy.** The trailer is empty and the dock is the scarce thing — send it back to the yard, or leave it here for its next load. Both are real; only the second was written down.","flows §5 P4′ · model §5.3",
+      null, false, null, "main", true),
+    st("P4e","P3","ASSIGN_MOVE_TASK","Dispatcher","**Optional** — to a spotter.","model §5.2",
+      null, false, null, "main", true),
+    st("P4f","P3","START_MOVE","Spotter","**Optional** — the DockStay closes and the dock is free.","model §5.2 · §2.6",
+      w => { const t=Object.values(w.trailers)[0];
+        const o=[];
+        if (w.dockStays.some(d=>d.trailer_id===t.id && d.pulled_at==null))
+          o.push("the DockStay should have closed");
+        if (t.dock && w.docks[t.dock] && w.docks[t.dock].state!=="FREE")
+          o.push("the dock should be free again");
+        return o; }, false, null, "main", true),
+    st("P4g","P3","COMPLETE_MOVE","Spotter","**Optional** — back in the yard, empty, available.","model §5.2",
+      null, false, null, "main", true)
   ]
 },
 {
   id:"F4", group:"The seven flows", name:"4 · Outbound pickup", sub:"DROP · one visit, someone else's trailer",
   ref:"flows §6 · pattern 4",
-  dek:"Driver arrives bobtail, hooks a trailer that was loaded under a different appointment, leaves. One visit, one TAKE leg, no BRING leg — which is where the registration and admission preconditions stop describing what happens. Not to be confused with an outbound preload, where the same driver brings the trailer and comes back for it.",
-  phases:["P0","P1","P3","P5","P6"], skip:["P2","P4"],
+  dek:"The flow does not start when the driver arrives. A trailer is chosen, the shipment put on it, and the load built — dock, spotter, crew, seal — before anybody registers at the gate; then a driver arrives bobtail, hooks it and leaves. One visit, one TAKE leg, no BRING leg. Not to be confused with an outbound preload, where the same driver brings the trailer and comes back for it.",
+  phases:["P0","P1","P2","P3","P4","P5","P6"],
   seed(w){
     baseYard(w);
     mkShipment(w,{id:"SHP-4001", direction:"OUTBOUND", consignee:"Sysco Nogales"});
+    /* An empty trailer standing in the yard, verified empty and nothing more.
+       Everything the old seed asserted — loaded, sealed, fill complete — is
+       now built by the flow, which is what was reported missing. */
     const t = mkTrailer(w,{id:"T2", number:"60917", carrier:"SWIFT"});
     t.position = "YARD_SPOT"; t.spot = "B-07"; w.spots["B-07"].occupants = ["T2"];
-    t.destination = "NONE"; t.fill = "COMPLETE"; t.sealed = true; t.seal = "SL448210";
-    t.empty_verification = "VERIFIED_EMPTY"; t.first_visit = false;
-    t.staged_since = w.clock - 200;
-    mkLoad(w,"SHP-4001","T2","ON_BOARD");
-    w.shipments["SHP-4001"].status = "STAGED";
+    t.destination = "NONE"; t.empty_verification = "VERIFIED_EMPTY"; t.first_visit = false;
     mkVisit(w,{id:"V1", visit_type:"DROP", legs:[
       {kind:"TAKE", trailer_id:"T2", expected_shipment_ids:["SHP-4001"]}]});
     w.focusVisit = "V1"; w.focusTrailer = "T2";
   },
   script:[
-    st("P1","P1","SELF_REGISTER","Driver","Registers. There is no BRING leg — watch what the effects have nothing to act on.","flows §6 P1"),
-    st("P1b","P1","ADMIT","Gate","Admitted.","flows §6 P1"),
-    st("P3","P3","HOOK_TRAILER","Driver","Hooks the staged trailer. Any pending move task is cancelled.","flows §6 P3 · stress 1-xi",
+    ...preAppointment("A","T2"),
+    st("P1","P1","SELF_REGISTER","Driver","**Now** the driver. Registers bobtail — there is no BRING leg, so watch what the effects have nothing to act on. He may do this while the load is still being built; he just cannot be admitted until it exists.","flows §6 P1",
+      null, false, {v:"V1"}, "driver"),
+    st("P1b","P1","ADMIT","Gate","Admitted — and this is the barrier. Everything above had to happen first.","flows §6 P1"),
+    st("P3","P3","HOOK_TRAILER","Driver","Hooks the staged trailer — road-tractor custody after a yard-truck one, on the same trailer, in the same stay.","flows §6 P3 · stress 1-xi",
       w => { const t=w.trailers.T2, o=[];
         if (!hasTractor(w,t.id)) o.push("road-tractor custody should be open");
         if (openMove(w,"T2")) o.push("any pending move task should have been cancelled");
-        return o; }),
+        if (w.custody.filter(c=>c.trailer_id==="T2").length<2)
+          o.push("the yard truck and the road tractor should both have custody spans");
+        return o; }, false, {t:"T2"}),
     st("P5a","P5","AUTHORIZE_DEPARTURE","Clerk","Shipments match the TAKE leg, fill complete, sealed.","flows §6 P5a"),
     st("P5b","P5","CHECK_OUT","Gate","Departs loaded.","flows §6 P5b"),
     st("P6","P6","@EXIT_READ","System","This is where the wrong trailer gets caught. Try picking a trailer other than 60917.","flows §6 P6")
@@ -3265,17 +3502,15 @@ const SCENARIOS = [
 {
   id:"F5", group:"The seven flows", name:"5 · Drop and hook", sub:"DROP · two trailers, one visit",
   ref:"flows §7 · patterns 5 & 6",
-  dek:"Brings one trailer, takes a different one. Nothing here is a distinct flow — it is two legs of the same spine running in one visit, which only works because trailer identity lives on the leg.",
-  phases:["P0","P1","P2","P3","P5","P6"], skip:["P4"],
+  dek:"Brings one trailer, takes a different one. The trailer he leaves with was loaded before he arrived, so the flow starts with that — and then nothing about the visit itself is a distinct flow: it is two legs of the same spine running at once, which only works because trailer identity lives on the leg.",
+  phases:["P0","P1","P2","P3","P4","P5","P6"],
   seed(w){
     baseYard(w);
     mkShipment(w,{id:"SHP-5001", direction:"INBOUND", consignee:"This facility"});
     mkShipment(w,{id:"SHP-5002", direction:"OUTBOUND", consignee:"Restaurant Depot 19"});
     const t2 = mkTrailer(w,{id:"T2", number:"60917", carrier:"SWIFT"});
     t2.position="YARD_SPOT"; t2.spot="C-02"; w.spots["C-02"].occupants=["T2"];
-    t2.fill="COMPLETE"; t2.sealed=true; t2.seal="SL441902"; t2.first_visit=false;
-    t2.empty_verification="VERIFIED_EMPTY"; t2.staged_since = w.clock-120;
-    mkLoad(w,"SHP-5002","T2","ON_BOARD"); w.shipments["SHP-5002"].status="STAGED";
+    t2.first_visit=false; t2.empty_verification="VERIFIED_EMPTY";
     mkVisit(w,{id:"V1", visit_type:"DROP", legs:[
       {kind:"BRING", trailer_id:null, hint_number:"71440", carrier:"ODFL",
        expected_shipment_ids:["SHP-5001"]},
@@ -3283,11 +3518,17 @@ const SCENARIOS = [
     w.focusVisit="V1";
   },
   script:[
-    st("P1","P1","SELF_REGISTER","Driver","Registers; BRING = 71440, TAKE = 60917.","flows §7 P1"),
-    st("P1b","P1","ADMIT","Gate","Admitted.","flows §7 P1"),
-    st("P2","P2","ASSIGN_YARD","Dispatcher","A drop point for the trailer being brought.","flows §7"),
-    st("P3a","P3","POSITION_TRAILER","Driver","Takes T1 to its spot.","flows §7"),
-    st("P3b","P3","DROP_TRAILER","Driver","T1 dropped — yard-team responsibility.","flows §7 P3b"),
+    ...preAppointment("B","T2"),
+    st("P1","P1","SELF_REGISTER","Driver","**Now** the driver. Registers; BRING = 71440, TAKE = 60917. He may do this while 60917 is still being loaded.","flows §7 P1",
+      null, false, {v:"V1"}, "driver"),
+    st("P1b","P1","ADMIT","Gate","Admitted — the barrier. The trailer he came for had to exist as a load first.","flows §7 P1",
+      null, false, {num:"71440"}),
+    st("P2","P2","ASSIGN_YARD","Dispatcher","A drop point for the trailer being brought.","flows §7",
+      null, false, {num:"71440"}),
+    st("P3a","P3","POSITION_TRAILER","Driver","Takes 71440 to its spot.","flows §7",
+      null, false, {num:"71440"}),
+    st("P3b","P3","DROP_TRAILER","Driver","71440 dropped — yard-team responsibility.","flows §7 P3b",
+      null, false, {num:"71440"}),
     /* The step acts on the OTHER trailer of the swap, and without the focus the
        board could not offer it: every gate reads the context trailer, and the
        context was still the one he had just dropped. Finding F23 — a visit can
@@ -3307,16 +3548,14 @@ const SCENARIOS = [
 {
   id:"F6", group:"The seven flows", name:"6 · Company driver takes a preload", sub:"DROP · RF badge, no dockpass",
   ref:"flows §8 · pattern 8",
-  dek:"Relaxed ceremony, identical record. Dockpass, guard interaction and seal ceremony all relax; which trailer left, which shipments were aboard, and the timestamp do not. The bench has to invent the entry path — the catalog has none.",
-  phases:["P0","P1","P3","P5","P6"], skip:["P2","P4"],
+  dek:"Relaxed ceremony, identical record. The load is built before he badges in, exactly as on a third-party pickup — then dockpass, guard interaction and seal ceremony all relax, while which trailer left, which shipments were aboard, and the timestamp do not. The bench has to invent the entry path — the catalog has none.",
+  phases:["P0","P1","P2","P3","P4","P5","P6"],
   seed(w){
     baseYard(w);
     mkShipment(w,{id:"SHP-6001", direction:"OUTBOUND", consignee:"Route 14 — 6 stops"});
     const t = mkTrailer(w,{id:"T7", number:"CH-2214", carrier:"CHENEY"});
     t.position="YARD_SPOT"; t.spot="C-03"; w.spots["C-03"].occupants=["T7"];
-    t.fill="COMPLETE"; t.sealed=true; t.seal="SL460031"; t.first_visit=false;
-    t.empty_verification="VERIFIED_EMPTY"; t.readiness="READY"; t.staged_since=w.clock-60;
-    mkLoad(w,"SHP-6001","T7","ON_BOARD"); w.shipments["SHP-6001"].status="STAGED";
+    t.first_visit=false; t.empty_verification="VERIFIED_EMPTY"; t.readiness="READY";
     mkTrailer(w,{id:"T8", number:"CH-2241", carrier:"CHENEY"}).position="YARD_SPOT";
     w.trailers.T8.spot="B-07"; w.spots["B-07"].occupants=["T8"]; w.trailers.T8.first_visit=false;
     mkVisit(w,{id:"V1", visit_type:"DROP", party_type:"COMPANY_DRIVER", access_method:"RF_BADGE",
@@ -3325,8 +3564,11 @@ const SCENARIOS = [
     w.focusVisit="V1"; w.focusTrailer="T7";
   },
   script:[
-    st("P1","P1","ADMIT","Driver","Badges in. No dockpass, no guard.","flows §8 P1"),
-    st("P3","P3","HOOK_TRAILER","Driver","Hooks the trailer. Note the near-identical CH-2241 parked at B-07.","flows §8 P3"),
+    ...preAppointment("C","T7"),
+    st("P1","P1","ADMIT","Driver","**Now** the driver. Badges in — no dockpass, no guard. Same barrier as a third-party pickup: the load had to be built first.","flows §8 P1",
+      null, false, {v:"V1"}),
+    st("P3","P3","HOOK_TRAILER","Driver","Hooks the trailer. Note the near-identical CH-2241 parked at B-07.","flows §8 P3",
+      null, false, {t:"T7"}),
     st("P5a","P5","AUTHORIZE_DEPARTURE","Driver","Reduced checks.","flows §8 P5"),
     st("P5b","P5","CHECK_OUT","Driver","Departs on the RF badge.","flows §8 P5"),
     st("P6","P6","@EXIT_READ","System","The exit read still fires — the whole control for the wrong-trailer risk, at no added ceremony. Pick CH-2241 to see it work.","flows §8 P6 · stress 1-xxii")
@@ -3340,8 +3582,10 @@ const SCENARIOS = [
   seed(w){
     /* seeded with requirements so the prep chain exists at all — but only until
        you touch the config, so stress test 1-xix-a stays testable here. */
-    if (!w.config._touched && !(w.config.readiness_requirements||[]).length)
+    if (!w.config._touched && !(w.config.readiness_requirements||[]).length){
       w.config.readiness_requirements = ["wash","inspect"];
+      w.config._seeded = true;      /* scenario-scoped: dropped on the next load */
+    }
     baseYard(w);
     const t = mkTrailer(w,{id:"T9", number:"CH-2214", carrier:"CHENEY"});
     t.position="LOT"; t.lot="OUTSIDE"; t.first_visit=false; t.readiness="NOT_READY";
@@ -3354,12 +3598,18 @@ const SCENARIOS = [
       w => w.trailers.T9.intake==="AWAITING_INTAKE" ? [] : ["the return should be AWAITING_INTAKE"]),
     st("R2","P6","INTAKE_TRAILER","Yard team","Brought into the system.","flows §9",
       w => w.trailers.T9.intake==="TAKEN_IN" ? [] : ["intake_state should be TAKEN_IN"]),
-    st("R3","P0","ADVANCE_READINESS","Wash bay","Cleaning and inspection begin.","flows §9 · model §3.7"),
-    st("R4","P0","ADVANCE_READINESS","Inspector","Requirements met — or damage found, which goes to OUT_OF_SERVICE, not READY.","flows §9 · stress 1-xx"),
-    st("R5","P0","VERIFY_EMPTY","Yard team","Empty verification is still required before assignment.","model §2.13"),
-    st("R6","P0","ASSIGN_SHIPMENT","Planner","Now, and not one step earlier, it is assignable.","stress 1-xix",
+    st("R3","P0","ADVANCE_READINESS","Wash bay","**Begin readiness work** — cleaning and inspection start. Same action as R4 and a different job; the board names them apart now.","flows §9 · model §3.7",
+      w => w.trailers.T9.readiness==="IN_PREP" ? [] : ["readiness should be IN_PREP"]),
+    st("R4","P0","ADVANCE_READINESS","Inspector","**Record the readiness outcome** — requirements met, or damage found, which goes to OUT_OF_SERVICE rather than READY.","flows §9 · stress 1-xx"),
+    st("R5","P0",["VERIFY_EMPTY","DECLARE_BACKHAUL"],"Yard team","**Either answer is valid.** The yard team open it to clean it, so they are the ones who can see whether it is empty — and if freight came back on it, that is the other answer and the catalog has no action for it. Empty verification is still required before assignment.","model §2.13 · §10.16"),
+    /* Optional because R5 is a genuine fork: on the empty branch the trailer
+       enters the pool here, and on the backhaul branch it cannot — it holds
+       freight nobody consigned here, and watching ASSIGN_SHIPMENT stay hidden
+       is the point of that branch. */
+    st("R6","P0","ASSIGN_SHIPMENT","Planner","**On the empty branch only.** Now, and not one step earlier, it is assignable. Take the other branch at R5 and this stays hidden — freight that came back has to come off first, and §5 has no session for it (§10.16).","stress 1-xix",
       w => flagsOf(w,"T9").includes("AVAILABLE_FOR_ASSIGNMENT") ||
-           rowsOf(w,"T9").length ? [] : ["the trailer should have entered the pool"])
+           rowsOf(w,"T9").length ? [] : ["the trailer should have entered the pool"],
+      false, null, "main", true)
   ]
 },
 
@@ -3624,12 +3874,12 @@ const SCENARIOS = [
     const a = mkTrailer(w,{id:"TA", number:"60917", carrier:"SWIFT"});
     a.position="YARD_SPOT"; a.spot="B-07"; w.spots["B-07"].occupants=["TA"];
     a.fill="COMPLETE"; a.sealed=true; a.seal="SL441902"; a.first_visit=false;
-    a.empty_verification="VERIFIED_EMPTY"; a.staged_since=w.clock-90;
+    a.empty_verification="UNVERIFIED"; a.staged_since=w.clock-90;
     mkLoad(w,"SHP-9001","TA","ON_BOARD"); w.shipments["SHP-9001"].status="STAGED";
     const b = mkTrailer(w,{id:"TB", number:"60971", carrier:"SWIFT"});
     b.position="YARD_SPOT"; b.spot="C-02"; w.spots["C-02"].occupants=["TB"];
     b.fill="COMPLETE"; b.sealed=true; b.seal="SL441960"; b.first_visit=false;
-    b.empty_verification="VERIFIED_EMPTY"; b.staged_since=w.clock-90;
+    b.empty_verification="UNVERIFIED"; b.staged_since=w.clock-90;
     mkLoad(w,"SHP-9002","TB","ON_BOARD"); w.shipments["SHP-9002"].status="STAGED";
     mkVisit(w,{id:"V1", visit_type:"DROP", presence:"ON_SITE", registration:"SELF_REGISTERED",
       dockpass:"60013", dockpass_consumed:true, on_site_since:w.clock,
@@ -3865,7 +4115,35 @@ const SEEDED = [
 
 {id:"F25", sev:"blocks", title:"A live load's dock stay had no closing event, so it outlasted the visit containing it",
  body:"<b>Reported from the history of an inbound live load: the dock stay was drawn lasting longer than the visit.</b> It should be the other way round — the driver pulls off the dock and <i>then</i> checks out at the gate, so the visit contains the dock stay.<br><br><b>The span had nowhere to close.</b> Model §5 names two ways a trailer leaves a dock, <span class=\"id\">START_MOVE</span> and <span class=\"id\">PULL_FROM_DOCK</span>, and both assume it is being handed to the yard team. A live load is the one flow where nobody hands it over: the driver keeps it from gate to gate. So on flows 1 and 2 nothing ever set <span class=\"id\">pulled_at</span>, and the history drew an open-ended bar running past the visit that contained it. In the engine <span class=\"id\">releasePosition()</span> frees the dock without touching the span — exactly the omission a per-action write invites.<br><br><b>And the flow folded two events into one step.</b> flows §3 P5b read “driver pulls off the dock and leaves”. Those are two events belonging to two different spans — the DockStay ends at the first, the Visit at the second — and on a live load they are the <i>only</i> two that can end them. Written as one step the dock stay could not end before the visit even in principle. §4 was worse: its table stopped at authorization and had no P5b at all.<br><br>Fixed three ways. The <b>DockStay is now synced from position</b> like the TrailerStay, so no action can forget it — with a loud dev note if a trailer reaches a dock without one, since that means an action skipped the open. <b>flows §3 and §4 gain P5a′</b>, the pull-off, and §2.6 states <span class=\"id\">pulled_at</span> as a property of the span rather than an effect of particular actions, which is how it went wrong. <span class=\"id\">CHECK_OUT</span> explicitly does <i>not</i> close a stay — the tempting fix, and it would both hide the missing event and record the pull-out at the wrong minute.<br><br><b>The containment is now a test the History panel runs.</b> On a live visit it reads the two spans and says which contains which; where it fails it says so, naming this finding. On a drop there is no such relationship — the dock stay can fall entirely after the visit ends, which is §10.12's whole point.",
- refs:"model §2.6 · model §5.1 · model §5.2 · model §10.12 · flows §3 P5 · flows §4 P5 · glossary §3"}
+ refs:"model §2.6 · model §5.1 · model §5.2 · model §10.12 · flows §3 P5 · flows §4 P5 · glossary §3"},
+
+{id:"F26", sev:"contradiction", title:"A trailer was verified empty, holding freight, sealed and fill-complete at the same time",
+ body:"<b>Reported from the outbound pickup: load state <span class=\"id\">HAS_FREIGHT</span> beside empty verification <span class=\"id\">VERIFIED_EMPTY</span></b>, on a trailer that was also sealed with fill complete. Any two of those contradict the third.<br><br><span class=\"id\">END_SESSION</span> sets <span class=\"id\">VERIFIED_EMPTY</span> when no rows remain — so unloading <i>establishes</i> emptiness — and <b>nothing anywhere retires the claim when loading destroys it</b>. The claim was true once and the model never said what makes it false. Exactly the asymmetry of F15, where only the aboard-but-not-expected half of the freight match was ever written.<br><br>Fixed as an <b>invariant rather than an effect</b>: a trailer with anything aboard cannot be described as verified empty, whoever said so and whenever. Written as an effect it has to be repeated in <span class=\"id\">END_SESSION</span>, in whatever records freight that came back (F31), and in every future action that puts freight on a trailer. Written once it holds — the same argument as <span class=\"id\">pulled_at</span> in §2.6, and the same failure when it was not followed. Model §3.6.6 now states it where the dimension is defined.",
+ refs:"model §3.6.6 · model §5.3 · model §9 #6 · glossary §5.1"},
+
+{id:"F27", sev:"gap", title:"Three patterns run P2, P3 and P4 before the driver's P1, and the flows called it \u201calready loaded\u201d",
+ body:"<b>Reported from operations: an outbound pickup does not start when the driver arrives.</b> A trailer is chosen, the shipment is put on it, and the load is built — dock, spotter, crew, fill, seal, optionally back to the yard — before anybody registers at the gate. Drop-and-hook and the company preload begin the same way for the trailer the driver leaves with.<br><br>flows §6 and §8 had this as a <b>single P0 row</b>: “Trailer already loaded, fill complete, sealed, waiting in the yard.” That describes the state the driver finds, not the operation that produced it — <b>eleven steps and four people</b>, and the part of the day a yard actually plans. §10's phase table said the same thing with dashes in the P2 and P4 columns, reading “not applicable” about all of it.<br><br><b>The phases are per object, not per appointment.</b> That is the structural point and it is not in §2's reading of the spine: the trailer completes P2, P3 and P4 before the driver's P1 begins. §1.1 already said a flow is a subset of the spine with repeats and parallel branches; this adds that the <i>order</i> belongs to the subject. Model §10.14 makes the same observation about the driver and the trailer diverging after a drop — here they have not converged yet.<br><br>The bench now runs the whole thing as a track of its own, so the driver may register while the load is still being built — what he cannot do is be admitted to collect a load that does not exist, which is why <span class=\"id\">ADMIT</span> is the first barrier step in all three flows. Walking it is what turned up F28 and F29, neither of which was reachable while the load was a seed rather than a sequence.",
+ refs:"flows §2.1 · flows §6 · flows §7 · flows §8 · flows §10 · model §4 · model §10.14"},
+
+{id:"F28", sev:"blocks", title:"Work on a yard trailer was blocked because a driver coming for it later had registered",
+ body:"<b>Found by walking the pre-appointment load (F27).</b> The planner could not put a shipment on a trailer that had been standing in the yard for hours, because the driver coming to collect it had scanned the QR sign. <span class=\"id\">ASSIGN_SHIPMENT</span> went hidden with “at the facility but not through the gate”, and <span class=\"id\">CREATE_MOVE_TASK</span> went disabled with “admit the visit first”.<br><br>Both were keyed on the <b>visit's</b> presence. Matrix §2.1's <span class=\"id\">AT_FACILITY</span> column is about the trailer that is <b>arriving</b> — the guard exists so nobody plans freight onto a trailer that has not cleared the gate (§9 #2) — and reading it off the visit conflates “this trailer has not cleared the gate” with “some visit naming this trailer has not”. On a pickup those are different: the trailer is here and the visit is outside.<br><br>Scoped to the visit's BRING-leg trailer. Note the arriving case needed no other change, because a registered-but-unadmitted trailer is still <span class=\"id\">OFF_SITE</span> — the position test was already doing the work, and the visit test was adding only the bug.<br><br>Only reachable once the load was built by the flow rather than asserted by the seed, which is the argument for F27 in one line.",
+ refs:"matrix §2.1 · model §5.2 · model §5.4 · model §9 #2"},
+
+{id:"F29", sev:"blocks", title:"A parked trailer with a load planned onto it could never be sent to a dock",
+ body:"<b>Also found by walking the pre-appointment load.</b> <span class=\"id\">ASSIGN_SHIPMENT</span> creates the row and changes nothing else, so the trailer stayed <span class=\"id\">destination = NONE</span> — and <span class=\"id\">ASSIGN_DOCK</span> is hidden unless the destination is <span class=\"id\">AWAITING_ASSIGNMENT</span>: <i>“nothing to assign to yet — no destination is being sought”</i>. A trailer with a load planned onto it could not be sent to a dock to have that load put in. The commonest preload there is, and it dead-ended at the second step.<br><br>Nothing else in §5 moves a parked trailer into the queue. <span class=\"id\">DROP_TRAILER</span> does it for a trailer the driver leaves behind, and there is no equivalent for one already standing here — the same shape as F10, where no action positioned a trailer that had a driver.<br><br>Fixed in <span class=\"id\">ASSIGN_SHIPMENT</span>'s effects rather than by loosening the guard: a parked trailer that has just been given freight <b>is</b> seeking a dock, and glossary's <span class=\"id\">AWAITING_DOCK</span> is “needs a dock”. The missing transition, not a wrong precondition — and scoped so a trailer already at a dock is left alone, which is §9 #37's empty-trailer-at-a-dock case.",
+ refs:"model §5.4 · matrix §2.3 · glossary §8"},
+
+{id:"F30", sev:"copy", title:"One action, two jobs, one label \u2014 and the gate was the only place a trailer could be called empty",
+ body:"<b>Reported from the return flow.</b> Two steps both read <b>“Work readiness requirements”</b>. The first starts the wash and inspection; the second records what they found. One action, two transitions, done by different people at different times — and a static label makes a board show the same step twice with no way to tell which is in front of you. An action's name belongs to the <i>transition</i>, so it is derived the way the treatment is: <b>“Begin readiness work”</b>, then <b>“Record the readiness outcome”</b>.<br><br><b>And the gate was the only owner of <span class=\"id\">VERIFY_EMPTY</span>.</b> On a return that is the wrong person: the yard team open the trailer and clean it, so they are the ones who can see it is empty. The gate is right where no cleaning is required. And the driver who dropped it off can say so himself. Three owners — which the actor field can now express as a set, so they share one column with a pick of who acts. F20's machinery earning its keep on a case it was not built for.",
+ refs:"model §5.5 · model §5.1 · model §9 #6 · matrix §1.8 · glossary §4.1 · glossary §7 · flows §9"},
+
+{id:"F31", sev:"gap", title:"A driver can say a returned trailer is empty and cannot say a delivery came back on it",
+ body:"<b>Reported: the driver who dropped it off should be able to mark it empty <i>or</i> backhaul</b> — freight that was not delivered, for one reason or another. The catalog has the first and nothing at all for the second, so the only way to record returned freight is to unload a shipment the system never knew was aboard.<br><br><b>The question is what the row is</b>, and it is a modelling decision rather than an editorial one. An <span class=\"id\">INBOUND</span> row costs nothing and says the facility is the consignee of freight nobody sent it — a receipt that never happened, landing in inbound volume. The original outbound row reopened is truthful about the shipment and makes the trailer read as a staged load ready to depart, the one thing it is not. A third origin, <span class=\"id\">RETURNED</span>, says what happened and ripples into load state, session direction and the departure checks.<br><br>Written up as open item <b>§10.16</b> with a recommendation: <b>the third origin</b>. The first two are cheap because they lie, and both lies surface a quarter later in a number nobody can reconcile. The commercial questions about returned freight are its own — whose it is, who pays for the trailer it sits in, whether it counts against the original delivery — and a row that says <span class=\"id\">RETURNED</span> can answer them.<br><br>The bench supplies <span class=\"id\">DECLARE_BACKHAUL</span>, marked <b>ENGINE</b> on its face because it is the bench's and not the catalog's, filing the return as an inbound row and saying on the action that this is the cheapest shape and probably the wrong one. Taking that branch leaves the trailer unassignable, which is §9 #16 giving the right answer for the wrong reason.",
+ refs:"model §10.16 · model §5.1 · model §9 #16 · flows §9 · glossary §2 · glossary §7"},
+
+{id:"F32", sev:"copy", title:"Two controls for one job, and the dock lead was asked to pick a yard spot",
+ body:"<b>Reported from the idle dock.</b> The board showed <span class=\"id\">PULL_FROM_DOCK</span> and <span class=\"id\">CREATE_MOVE_TASK</span> as two jobs for two people. They are one job — <i>this trailer needs to move</i> — distinguished only by where it happens to be standing, and at a dock the second is a dead end reading “assign a dock or yard destination first”. Matrix §1.1's own rule says a reason has to name a step that is the way forward; this one names a step that is not. It is now <b>hidden</b> at a dock, so there is one control.<br><br><b>And the dock lead was being asked “where to”</b>, from a list of yard spots. He knows his dock is wanted; he does not know the yard. The request now names <b>no destination at all</b> — it reports that the dock is needed — and the spot is chosen by whoever knows the yard: the dispatcher at <span class=\"id\">ASSIGN_MOVE_TASK</span>, or the spotter on the ground at <span class=\"id\">COMPLETE_MOVE</span>, which already refuses “moved, location unknown”. Both actions now carry the owner sets that follow: anyone who can see the dock is blocked may report it.<br><br><b>Whether they should be one action is a naming decision</b>, written up as §10.17 with a recommendation to merge behind a derived label. The evidence that two names is the wrong shape: a scenario in this set called for both in sequence, and nobody noticed until the board drew them side by side.<br><br><b>Also reported: readiness work was offered at the idle dock.</b> Two causes. Washing and inspection happen in the yard or the wash bay, and a trailer holding a dock has a more urgent problem — so it is hidden there now, another position precondition §5 never stated (F21). And the facility config was <b>leaking between scenarios</b>: flow 7 turns readiness requirements on so its prep chain exists, and that setting survived into every scenario opened afterwards. Scenario-seeded config is now dropped on the next load, while anything you change yourself is kept.",
+ refs:"model §5.2 · model §5.3 · model §5.5 · model §10.17 · matrix §1.1 · matrix §2.5 · glossary §7"}
 ];
 const SEV = {
   blocks:{l:"Blocks a flow", t:"r"}, contradiction:{l:"Documents disagree", t:"r"},
@@ -3897,6 +4175,13 @@ const APPLIED = {
   F20:"matrix v0.16 §1.8 · glossary v0.10 §4.1 and §8 · flows v0.9 §12 — ownership is now specified as a set, with the four shared actions named",
   F22:"model v0.25 §5.1, §5.2 and §10.15 · matrix v0.18 §2.6 and §4 · glossary v0.12 §7 · flows v0.10 §10 — both actions are now scoped; the conversion they were standing in for is open item §10.15 for you to decide",
   F23:"matrix v0.18 §2 note · flows v0.10 §7 — stated as a gap with the two candidate shapes; undecided, and §1.7's meaning depends on which you take",
+  F32:"model v0.29 §5.2, §5.3, §5.5 and §10.17 · matrix v0.21 §2.5 · glossary v0.16 §7 — one control at a dock and no destination asked of the requester; whether the two actions should be merged is yours",
+  F26:"model v0.28 §3.6.6, §5.3 and §9 #6 · glossary v0.15 §5.1 — stated as an invariant of the dimension rather than an effect of one action",
+  F27:"flows v0.12 §2.1, §6, §7, §8 and §10 · model v0.28 §4 — the pre-appointment run is written out; the bench walks all eleven steps in three flows",
+  F28:"matrix v0.20 §2.1 · model v0.28 §5.2, §5.4 and §9 #2",
+  F29:"model v0.28 §5.4 · matrix v0.20 §2.3",
+  F30:"model v0.28 §5.1 and §5.5 · matrix v0.20 §1.8 · glossary v0.15 §7 · flows v0.12 §9",
+  F31:"model v0.28 §10.16 · flows v0.12 §9 · glossary v0.15 §2 and §7 — written up with a recommendation; the row's shape is yours to decide",
   F25:"model v0.27 §2.6, §5.1 and §5.2 · flows v0.11 §3 and §4 · glossary v0.14 §3 — the span now closes from position, the pull-off is its own step, and the containment is checked in the History panel",
   F24:"model v0.26 §5.4, §3.2 and §9 #39 · matrix v0.19 §1.1, §2.3, §2.5 and §2.6 · glossary v0.13 §7 — decided, and recorded as a resolved decision rather than a finding against the text",
   F21:"model v0.24 §3.2, §5.3, §5.4 and the §5 note · matrix v0.17 §1.1, §2.1, §2.3 and §2.5 · glossary v0.11 §5.1 and §7 — the declaration is scoped to an outbound load and §5 now says every action needs its position precondition; whether sealing should be offered on an inbound trailer at all is left open"
@@ -3911,6 +4196,13 @@ const $  = s => document.querySelector(s);
 const esc = s => String(s==null?"":s).replace(/[&<>"]/g, c =>
   ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const idt = s => '<span class="id">'+esc(s)+'</span>';
+/* Reported: two steps of the readiness chain both read "Work readiness
+   requirements" — the first starts the work, the second records its outcome.
+   One action, two transitions, and a static label cannot say which. An action
+   may now name itself from the state it is about to change. */
+const actLabel = (a, w, c) => !a ? ""
+  : (a.labelOf ? a.labelOf(w||W, c||ctxOf(w||W)) : a.label);
+const actLabelById = id => actLabel(ACTIONS[id] || WORLD[id]);
 let VERDICTS = {};     /* findings/<id> from db */
 let NOTES = [];        /* viewer-added findings from db */
 
@@ -4099,7 +4391,7 @@ function actChip(r, isNext){
     ? '<span class="aw" style="color:var(--bad)">matrix §2.1 says '+r.diverges+
       ', engine says '+r.res.t+'</span>' : "";
   return '<button type="button" class="'+cls.join(" ").trim()+'" data-act="'+r.id+'"'+dis+'>' +
-    '<span class="an">'+esc(a.label)+(a.engine?" · ENGINE":"")+'</span>' +
+    '<span class="an">'+esc(actLabel(a,W,c))+(a.engine?" · ENGINE":"")+'</span>' +
     (r.res.why ? '<span class="aw">'+esc(r.res.why)+'</span>' : '') + div + '</button>';
 }
 /* ===========================================================================
@@ -4307,14 +4599,14 @@ function renderActions(){
   const chip = (e, as) =>
     '<button type="button" class="la'+(nextIds.includes(e.id)?" next":"")+
       (e.unblocks.length?" blk":"")+'" data-act="'+e.id+'" data-as="'+as+'">'+
-    '<span class="lan">'+esc(e.a.label)+'</span>'+
+    '<span class="lan">'+esc(actLabel(e.a,w,c))+(e.a.engine?" · ENGINE":"")+'</span>'+
     (nextIds.includes(e.id) ? '<span class="lat">the scripted next step</span>' : '') +
     (e.unblocks.length
       ? '<span class="unb">unblocks '+e.unblocks.map(u => esc(u.col.label)+' · '+
-          esc((ACTIONS[u.id]||{}).label||u.id).toLowerCase()).join(", ")+'</span>'
+          esc(actLabelById(u.id)||u.id).toLowerCase()).join(", ")+'</span>'
       : e.thenYou.length
         ? '<span class="dep">then you can '+
-          e.thenYou.map(u => esc((ACTIONS[u.id]||{}).label||u.id).toLowerCase()).join(", ")+'</span>'
+          e.thenYou.map(u => esc(actLabelById(u.id)||u.id).toLowerCase()).join(", ")+'</span>'
         : '') + '</button>';
 
   const blockedRow = (e, as) => {
@@ -4323,13 +4615,13 @@ function renderActions(){
        step is one the reader can take, say so as their own next step — telling
        the dispatcher they are waiting on the dispatcher is worse than useless. */
     const mine = o && o.lanes && o.lanes.indexOf(as)>=0;
-    const named = o && o.id ? esc((ACTIONS[o.id]||{}).label||o.id).toLowerCase() : "";
+    const named = o && o.id ? esc(actLabelById(o.id)||o.id).toLowerCase() : "";
     const tail = !o ? esc(e.res.why||"")
       : o.permission ? 'needs a <b>'+esc(o.roleName)+'</b>'
       : mine ? 'you have to '+named+' first'+(o.ready ? '' : ' — '+esc(e.res.why||""))
       : o.ready ? 'waiting on <b>'+esc(o.who)+'</b> to '+named
       : 'waiting on <b>'+esc(o.who||"someone")+'</b> — '+esc(e.res.why||"");
-    return '<div class="lb"><span class="lbn">'+esc(e.a.label)+'</span>'+
+    return '<div class="lb"><span class="lbn">'+esc(actLabel(e.a,w,c))+'</span>'+
       '<span class="dep">'+tail+'</span></div>';
   };
 
@@ -4356,14 +4648,14 @@ function renderActions(){
       x.live.map(e => chip(e, as)).join("") +
       (x.std.length ? '<div class="stds">'+x.std.map(e =>
         '<button type="button" class="la std" data-act="'+e.id+'" data-as="'+as+
-        '"><span class="lan">'+esc(e.a.label)+'</span></button>').join("")+'</div>' : "") +
+        '"><span class="lan">'+esc(actLabel(e.a,w,c))+'</span></button>').join("")+'</div>' : "") +
       (x.blocked.length ? '<div class="lbs">'+x.blocked.slice(0,3)
         .map(e => blockedRow(e, as)).join("")+
         (x.blocked.length>3 ? '<div class="dep">and '+(x.blocked.length-3)+
           ' more blocked here</div>' : '')+'</div>' : "") +
       (!x.avail.length && !x.blocked.length ? '<span class="dep">nothing to do</span>' : "") +
       (SHOW_HIDDEN && x.hidden.length ? '<div class="lbs">'+x.hidden.map(e =>
-        '<div class="lb"><span class="lbn" style="color:var(--mute)">'+esc(e.a.label)+
+        '<div class="lb"><span class="lbn" style="color:var(--mute)">'+esc(actLabel(e.a,w,c))+
         '</span><span class="dep">hidden — '+esc(e.res.why||"")+'</span></div>').join("")+
         '</div>' : "") +
       '</div></div>';
@@ -4426,7 +4718,7 @@ const stepMatches = (s,id) => Array.isArray(s.do) ? s.do.includes(id) : s.do===i
 function renderSteps(){
   if (!SCEN){ $("#steps").innerHTML = ""; return; }
   const open = openSteps();
-  const TRACK_LABEL = {main:"", driver:"driver", trailer:"trailer"};
+  const TRACK_LABEL = {main:"", driver:"driver", trailer:"trailer", load:"before the appointment"};
   $("#steps").innerHTML = SCEN.script.map((s,i) => {
     const res = SCEN._results && SCEN._results[i];
     const cls = ["step"];
@@ -4724,7 +5016,12 @@ function render(){
 
 function loadScenario(id, keepConfig){
   const s = SCENARIOS.find(x => x.id===id) || SCENARIOS[0];
-  const cfg = keepConfig && W ? JSON.parse(JSON.stringify(W.config)) : defaultConfig();
+  /* A scenario that seeds facility config must not leave it behind for the
+     next one. Flow 7 turns readiness requirements on so its prep chain exists,
+     and that was making readiness work appear at an idle dock two scenarios
+     later. A config the user changed themselves is kept. Finding F32. */
+  const reuse = keepConfig && W && (W.config._touched || !W.config._seeded);
+  const cfg = reuse ? JSON.parse(JSON.stringify(W.config)) : defaultConfig();
   W = blankWorld(cfg);
   SCEN = s; DEVIATIONS = [];
   s._results = [];
@@ -4869,6 +5166,29 @@ function afterAction(id){
       if (!sj.optional) break;
       skipped.push(j);
     }
+  }
+  /* A whole track can also *end* in optional steps that nobody takes — the
+     pre-appointment load left at the dock rather than pulled back to the yard.
+     Those are stepped over when the flow moves on to a step that is not on
+     their track, which for the pre-appointment run is ADMIT. */
+  const steppable = [];
+  for (const i of open){
+    const tr = trackOf(SCEN.script[i]);
+    const idx = [];
+    let allOptional = true;
+    for (let j=i;j<SCEN.script.length;j++){
+      const sj = SCEN.script[j];
+      if (trackOf(sj)!==tr) continue;
+      if (!sj.optional){ allOptional = false; break; }
+      idx.push(j);
+    }
+    if (allOptional) idx.forEach(j => steppable.push(j));
+  }
+  if (steppable.length){
+    steppable.forEach(k => { SCEN._results[k] = {status:"skip", issues:[]}; });
+    for (const i of openSteps())
+      if (stepMatches(SCEN.script[i], id)){ recordStep(i); applyStepFocus(); return; }
+    steppable.forEach(k => { SCEN._results[k] = undefined; });   /* no match: put them back */
   }
   DEVIATIONS.push(id);
 }

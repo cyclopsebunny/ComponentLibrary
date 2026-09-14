@@ -1,7 +1,28 @@
 # Yard, Dock & Appointment Operations — Domain Model and UI Specification
 
-**Status:** Draft v0.27 — a dock stay ends when the trailer leaves the dock
+**Status:** Draft v0.29 — one job, one action, and the requester does not pick the spot
 **Purpose:** Define the entities, independent state dimensions, actions, derived work queues, and trailer-card display rules needed to manage trailers, shipments, and appointments at a distribution facility.
+
+### Changes from v0.28
+
+Reported from the idle dock: `PULL_FROM_DOCK` and `CREATE_MOVE_TASK` read as two jobs for two people, and the dock lead was being asked which yard spot to use.
+
+- **`PULL_FROM_DOCK` names no destination** (§5.3). It is a report that the dock is needed. The spot is chosen by whoever knows the yard — the dispatcher at `ASSIGN_MOVE_TASK`, or the spotter on the ground at `COMPLETE_MOVE`, which already demands a real placement.
+- **`CREATE_MOVE_TASK` is hidden at a dock** (§5.2). Two controls for one job, one of them disabled with "assign a dock or yard destination first", is matrix §1.1's hidden case exactly.
+- **Both are owned by more than one role** (§5.2, §5.3): whoever can see the dock is blocked may say so, and the dispatcher or the yard team may name the spot.
+- **`ADVANCE_READINESS` is hidden at a dock** (§5.5). Washing and inspection happen in the yard or the wash bay, and a trailer occupying a dock has a more urgent problem. Another position precondition the catalog never stated (§5 note).
+- **§10.17 opened — are these one action or two?** The behaviour is now right either way; the naming is a decision.
+
+### Changes from v0.27
+
+Four reports from walking the pickup and return flows.
+
+- **The empty verification is retired when freight goes aboard** (§3.6.6, §5.3). An outbound pickup showed load state `HAS_FREIGHT` beside `VERIFIED_EMPTY`, on a trailer that was also sealed with fill complete. `END_SESSION` sets `VERIFIED_EMPTY` when no rows remain, so unloading *establishes* emptiness — and nothing anywhere retired the claim when loading destroyed it. The same one-directional asymmetry as v0.23's freight match.
+- **`ASSIGN_SHIPMENT` puts a parked trailer into the dock queue** (§5.4). `destination` stayed `NONE`, so `ASSIGN_DOCK` stayed hidden — "nothing to assign to yet" — and a trailer with a load planned onto it could never be sent to a dock to have that load put in. Nothing else in §5 moves a parked trailer into the queue.
+- **"At the facility but not through the gate" is scoped to the *arriving* trailer** (§5.2, §5.4, §9 #2). Keyed on the visit's presence, it blocked the planner from assigning freight to a trailer that had been in the yard for hours, because the driver coming to collect it later had registered at the QR sign.
+- **§4 patterns 4, 5 and 8 begin before the appointment** (§4, flows §6–§8). The load is built — trailer chosen, shipment assigned, dock, spotter, crew, fill, seal — before anybody registers at the gate. The phases are per object, not per appointment: the trailer completes P2, P3 and P4 before the driver's P1.
+- **§5.5 `ADVANCE_READINESS` is two transitions and needs two names** (§5.5), and **`VERIFY_EMPTY` is not the gate's alone** (§5.1) — the yard team open and clean the trailer, so on a return they are the ones who can see it is empty, and the driver who dropped it off can say so himself.
+- **§10.16 opened — freight that came back.** A driver dropping a trailer off should be able to say it is empty *or* that a delivery came back on it. The catalog has the first and not the second.
 
 ### Changes from v0.26
 
@@ -941,6 +962,14 @@ Note that the second outcome produces a driver-attached trailer parked in the ya
 
 ---
 
+### 3.6.6 The empty verification is retired by freight, not just established by its absence
+
+`END_SESSION` sets `empty_verification → VERIFIED_EMPTY` when no rows remain: unloading **establishes** emptiness. Nothing said what loading does to it, so the claim survived the freight going on, and an outbound pickup could show load state `HAS_FREIGHT` next to `VERIFIED_EMPTY` on a trailer that was also sealed with fill complete. All three at once, and any two of them contradict the third.
+
+**State it as a property of the dimension, not as an effect of an action.** A trailer with anything aboard — `ON_BOARD`, `LOADING` or `PART_LOADED` — cannot be described as verified empty, whatever was true earlier and whoever said it. Written as an effect it has to be repeated in `END_SESSION`, in `ASSIGN_SHIPMENT`'s downstream, in whatever records freight that came back (§10.16), and in every future action that puts freight on a trailer; written as an invariant it holds once. The same argument as `pulled_at` in §2.6, and the same failure when it was not followed.
+
+The stored value is a record of the last verification. The *meaningful* value is only meaningful while nothing is aboard, which is exactly when it is needed: `ASSIGN_SHIPMENT` is the only thing that reads it.
+
 ### 3.7 Readiness — the generalized gate on availability
 
 A circulating company fleet (§9 #34) needs something the model lacked: a state between "returned" and "usable." But **cleaning is only one instance of it** (§9 #35), so the dimension is defined by facility-configured requirements rather than by a hardcoded wash step.
@@ -1036,7 +1065,7 @@ Each action lists preconditions and effects. This table is the contract: the UI 
 | `ADMIT` | `presence = AT_FACILITY` or `AT_GATE`; **one of** a valid unconsumed dockpass, gate registration, or an RF badge where `access_method = RF_BADGE` (§9 #34); BRING-leg trailer identified **where the visit has a BRING leg** | Dockpass consumed if one was used; `presence → ON_SITE`; `admitted_at` and `on_site_since` set. **The trailer effects apply only to a trailer that is arriving** (`position = OFF_SITE`): BRING trailer position → `AT_GATE_IN`; inbound shipments → `ARRIVED`; if nothing is aboard, `empty_verification → CLAIMED_EMPTY`. On a second visit (§10.13) the BRING leg still names a trailer that has been standing at a dock for hours — reapplying these moves it to the inbound apron while it is still holding its dock |
 | `REGISTER_AND_ADMIT` | Kiosk or guard, no prior self-registration | The single-step path: sets registration, presence, and optionally destination in one transaction. **No separate logic** — it writes the same dimensions (§3.6.4) |
 | `HOLD_OUTSIDE` | `presence = AT_GATE`; no dock assigned | Visit held outside the fence. Stays `AT_GATE`, remains in the dock-assignment queue. **Does not start the detention clock** where detention runs from admission (§10.6) |
-| `VERIFY_EMPTY` | **Nothing aboard** — no `ON_BOARD` or `PART_LOADED` rows. *Not* load state `EMPTY`: an outbound live load is `ASSIGNED_ONLY` from the moment its TAKE leg is bound, so the stricter reading would make this action unavailable on the one flow that needs it | `empty_verification → VERIFIED_EMPTY`. Optional at gate or any time after (§9 #6) |
+| `VERIFY_EMPTY` | **Owned by the yard team, the gate and the driver** — whoever can see inside. On a return the yard team open and clean it, so they are the ones who know; the gate is right where no cleaning is required; and the driver dropping it off can say so himself (§9 #6, matrix §1.8's owner set). **Nothing aboard** — no `ON_BOARD` or `PART_LOADED` rows. *Not* load state `EMPTY`: an outbound live load is `ASSIGNED_ONLY` from the moment its TAKE leg is bound, so the stricter reading would make this action unavailable on the one flow that needs it | `empty_verification → VERIFIED_EMPTY`. Optional at gate or any time after (§9 #6) |
 | `AUTHORIZE_DEPARTURE` | Every leg has a trailer. **The freight checks apply only to the trailer this visit is actually leaving with** — the TAKE-leg trailer the driver currently has hooked (§3.5). A driver who dropped what he brought and hooked nothing leaves bobtail, and a TAKE leg he has not hooked is a later visit's business (§10.13). For that departing trailer, **freight matching is checked in both directions**: nothing aboard that is not on `expected_shipment_ids` **plus `expected_residual_shipment_ids`** (§2.5) — *and nothing on `expected_shipment_ids` still missing*, which v0.22 and earlier never said and no flag covered (§6.1); if carrying *outbound* freight, `fill_declaration = COMPLETE` and sealed; no open MoveTask or DockSession on TAKE trailer. **`party_type = COMPANY_DRIVER` relaxes the seal and authorization ceremony but not the trailer-to-load match** (§9 #34) | Visit → `AUTHORIZED_TO_DEPART` |
 | `CHECK_OUT` | Visit `AUTHORIZED_TO_DEPART`. **No camera dependency** — reads are too slow to gate the lane (§9 #28) | `presence → DEPARTED` **for this visit**; the trailer the driver has hooked → `OFF_SITE`, custody closed — *not* simply "the TAKE-leg trailer", which on visit 1 of a preload is staying (§10.13); outbound shipments → `DEPARTED`. Detention stops at the exit image *capture* time once the read lands, otherwise at the clerk's action (§3.6). **This does not close a DockStay.** A trailer leaving through the gate is not at a dock, and if a stay is still open when its driver checks out then whatever took the trailer off the dock failed to close it — closing it here would hide that and record the pull-out at the wrong minute (§2.6) |
 | `DECLARE_TAKE_LEG_CHANGE` | Visit `ON_SITE` or later, before `CHECK_OUT`; **no `OPEN` or `ACTIVE` session on the TAKE-leg trailer** — this is a departure declaration and the dock is still working; **the TAKE leg does not name the trailer the driver brought** — where both legs name one trailer there is nothing to substitute, and leaving it here is §10.15's conversion rather than an amendment. The action is for a self-service pickup (flows §7 P3, matrix §2.6); substitute trailer on site and not on another open leg; supervisor confirmation if the substitute carries freight (§5.1) | TAKE leg's `trailer_id` amended, or cleared for a bobtail departure. Original trailer stays on site with its shipments intact. Logged against both trailers |
@@ -1132,8 +1161,8 @@ Note what is deliberately *not* here: no requirement that a trailer be pre-regis
 | `ASSIGN_DOCK` | `destination = AWAITING_ASSIGNMENT`; dock `FREE` or its hold expired. **Trailer need not be on site** (§2.13) | `DockAssignment` `HELD`; `destination → DOCK_ASSIGNED` |
 | `RELEASE_DOCK` | Assignment `HELD` | `RELEASED` with a reason — reassigned, no-show, dock out of service; `destination → AWAITING_ASSIGNMENT` |
 | `ASSIGN_YARD` | `destination = AWAITING_ASSIGNMENT` | `destination → YARD_ASSIGNED`. Specific spot optional (§9 #8) |
-| `CREATE_MOVE_TASK` | No open MoveTask; trailer on site; **no tractor attached** (§3.5); destination assigned | MoveTask `PENDING`. May be created automatically on `ASSIGN_DOCK` where the facility is configured for it (§2.11) |
-| `ASSIGN_MOVE_TASK` | Task `PENDING` | Task → `ASSIGNED` to a spotter |
+| `CREATE_MOVE_TASK` | No open MoveTask; trailer on site; **no tractor attached** (§3.5); destination assigned. "Admit the visit first" (matrix §2.1) applies **only where this trailer is the one arriving on that visit** — otherwise a spotter cannot move a yard trailer because the driver of a later pickup is standing at the gate (§9 #2) | MoveTask `PENDING`. May be created automatically on `ASSIGN_DOCK` where the facility is configured for it (§2.11) |
+| `ASSIGN_MOVE_TASK` | Task `PENDING`. **Dispatcher or yard team** | Task → `ASSIGNED` to a spotter. **Where the request named no spot** (`PULL_FROM_DOCK`, §5.3) this is where one is chosen, by the person who knows the yard — or left to the spotter, who reports the placement at `COMPLETE_MOVE` |
 | `START_MOVE` | Task `PENDING`/`ASSIGNED`; trailer has no `ACTIVE` DockSession | Task → `IN_PROGRESS`; position → `IN_MOTION`; origin released; if leaving a dock, DockStay closes |
 | `COMPLETE_MOVE` | Task `IN_PROGRESS`; `actual_destination` reported — **or sensor-confirmed for a dock** (§2.9) | Task → `COMPLETED`; position → `actual_destination`; if a dock, DockStay opens and `DockAssignment → FULFILLED`; variance flag if ≠ `requested_destination`. **If the move crossed the fence**, presence changes with it and any presence-dependent clock starts or stops |
 | `CANCEL_MOVE` | Task not terminal | Task → `CANCELLED`; reservations released |
@@ -1146,11 +1175,11 @@ Note what is deliberately *not* here: no requirement that a trailer be pre-regis
 | `ADD_SHIPMENT_TO_SESSION` | **Exception path** (§9 #37). Session `OPEN` **or `ACTIVE`** (§9 #17); direction matches; `LOAD` requires row `ASSIGNED` or `PART_LOADED`; `UNLOAD` requires row `ON_BOARD` | SessionShipment row created with `joined_at` |
 | `REMOVE_SHIPMENT_FROM_SESSION` | Session `OPEN`; shipment not yet worked | Removed from set. **For an inbound removal, offers to add it to the TAKE leg's residual list** (§2.5) |
 | `START_SESSION` | Session `OPEN` with ≥1 shipment; every row in the required state | Session → `ACTIVE`; all rows in set → `LOADING`/`UNLOADING`; shipments → `LOADING`/`UNLOADING`. Normally the next action after `OPEN_SESSION`, since the set is already correct |
-| `END_SESSION` | Session `ACTIVE`; **an outcome recorded for every shipment in the set** | Session → `ENDED`. Per shipment — `LOADED`: row → `ON_BOARD`, shipment → `LOADED`. `NOT_LOADED`: row → `ASSIGNED`. `PARTIAL`: row → `PART_LOADED` (**supervisor only**, §9 #14). `UNLOADED`: row closed, shipment → `RECEIVED`. If no rows remain, `empty_verification → VERIFIED_EMPTY` |
+| `END_SESSION` | Session `ACTIVE`; **an outcome recorded for every shipment in the set** | Session → `ENDED`. **Any outcome that puts freight aboard retires the empty verification** — `empty_verification → UNVERIFIED`, the mirror of the rule below and missing until v0.28 (§9 #6). Per shipment — `LOADED`: row → `ON_BOARD`, shipment → `LOADED`. `NOT_LOADED`: row → `ASSIGNED`. `PARTIAL`: row → `PART_LOADED` (**supervisor only**, §9 #14). `UNLOADED`: row closed, shipment → `RECEIVED`. If no rows remain, `empty_verification → VERIFIED_EMPTY` |
 | `CANCEL_SESSION` | Session `OPEN`; or `ACTIVE` with **supervisor role** (§9 #14) | Session → `CANCELLED`; same per-shipment reconciliation as `END_SESSION`; reason code required |
 | `DECLARE_FILL_COMPLETE` | **≥1 `ON_BOARD` row whose direction is `OUTBOUND`** — inbound rows begin `ON_BOARD`, so "≥1 `ON_BOARD` row" was satisfied by a loaded inbound trailer still outside the fence (§3.2); no `OPEN` or `ACTIVE` session; **no `PART_LOADED` rows**; role permitted by facility config (§9 #13) | `fill_declaration → COMPLETE` |
 | `REOPEN_FILL` | `fill_declaration = COMPLETE`; not sealed | `fill_declaration → OPEN`; reason code required |
-| `PULL_FROM_DOCK` | No `OPEN` or `ACTIVE` session on the stay | Creates a MoveTask; DockStay closes on `START_MOVE` |
+| `PULL_FROM_DOCK` | No `OPEN` or `ACTIVE` session on the stay. **Owned by the dock lead, the dispatcher and the yard team** — anyone who can see the dock is blocked may report it | Creates a MoveTask **with no destination named**: this action is the report that the dock is needed, not a placement decision. The dock lead knows his dock is wanted and does not know the yard, so asking him "where to" from a list of spots asks the wrong person. `requested_destination` is set to the yard generally; the spot is chosen at `ASSIGN_MOVE_TASK` by whoever knows the yard, or by the spotter at `COMPLETE_MOVE`, which already refuses "moved, location unknown". DockStay closes on `START_MOVE` (§10.17) |
 
 **Where shipment-to-trailer binding comes from** (§9 #37). Two origins, and only the second needs a human to choose a trailer:
 
@@ -1171,7 +1200,7 @@ The planner-driven path is the original requirement to send an empty trailer to 
 
 | Action | Preconditions | Effects |
 |---|---|---|
-| `ASSIGN_SHIPMENT` | **Exception path** (§9 #37) — for preloads and empty-trailer-at-a-dock, which have no appointment to derive from. Outbound; shipment `PLANNED` with no TrailerLoad row; **trailer position ≠ `OFF_SITE`** (§9 #2); trailer `IN_SERVICE`; `fill_declaration = OPEN`; trailer has **no inbound rows at all** (§9 #16); `empty_verification ≠ UNVERIFIED` (§9 #6) | TrailerLoad row created `ASSIGNED`; shipment → `ASSIGNED` |
+| `ASSIGN_SHIPMENT` | **Exception path** (§9 #37) — for preloads and empty-trailer-at-a-dock, which have no appointment to derive from. Outbound; shipment `PLANNED` with no TrailerLoad row; **trailer position ≠ `OFF_SITE`** (§9 #2) — and that test is about **this** trailer, not about any visit that names it: a trailer standing in the yard is not outside the gate because the driver coming to collect it later has registered; trailer `IN_SERVICE`; `fill_declaration = OPEN`; trailer has **no inbound rows at all** (§9 #16); `empty_verification ≠ UNVERIFIED` (§9 #6) | TrailerLoad row created `ASSIGNED`; shipment → `ASSIGNED`. **If the trailer is parked and seeking nothing, `destination → AWAITING_ASSIGNMENT`** — it has a load to put in, so it needs a dock, and without this `ASSIGN_DOCK` stays hidden and the load can never be built |
 | `UNASSIGN_SHIPMENT` | Row `ASSIGNED` (never `LOADING`, `PART_LOADED`, or later — §9 #5) | Row deleted; shipment → `PLANNED` |
 | `SEAL_TRAILER` | **Trailer on site** — sealing is a physical act; **≥1 `ON_BOARD` row whose direction is `OUTBOUND`** — the same test `DECLARE_FILL_COMPLETE` uses, and for the same reason: sealing is for a load going out (§9 #39). It rules out sealing before the load is aboard, sealing an emptied trailer, and re-sealing an inbound trailer, in one condition; `fill_declaration = COMPLETE`; **no `PART_LOADED` rows**; no `ACTIVE` session | Seal recorded; outbound shipments → `STAGED` |
 | `BREAK_SEAL` | Sealed | Seal cleared; shipments → `LOADED`; reason code required |
@@ -1182,7 +1211,7 @@ The planner-driven path is the original requirement to send an empty trailer to 
 |---|---|---|
 | `MARK_OUT_OF_SERVICE` | Any | `service_state → OUT_OF_SERVICE`; blocks new assignment and TAKE legs. Does **not** cancel an active session — see §11.9 |
 | `RETURN_TO_SERVICE` | `OUT_OF_SERVICE` | `service_state → IN_SERVICE` |
-| `ADVANCE_READINESS` | `readiness_requirements` is non-empty (otherwise the action does not exist at this facility, §3.7); trailer taken in | `readiness → IN_PREP` when work starts, then `READY` when every requirement is met — **or `service_state → OUT_OF_SERVICE` if an inspection fails**, never `READY` (§3.7). The pool count must reflect the loss |
+| `ADVANCE_READINESS` | `readiness_requirements` is non-empty (otherwise the action does not exist at this facility, §3.7); trailer taken in; **not at a dock** — washing and inspection happen in the yard or the wash bay, and a trailer occupying a dock has a more urgent problem | `readiness → IN_PREP` when work starts, then `READY` when every requirement is met — **or `service_state → OUT_OF_SERVICE` if an inspection fails**, never `READY` (§3.7). The pool count must reflect the loss. **These are two transitions, and a screen must name them apart**: starting the wash and inspection is a different job from recording what they found, done by different people at different times, and one label for both reads as the same step offered twice |
 | `INTAKE_TRAILER` | An `UnappointedReturn` is `AWAITING_INTAKE`; trailer identified | `intake_state → TAKEN_IN`; trailer becomes a normal on-site asset; `destination → AWAITING_ASSIGNMENT` or `NONE`. Empty verification still required before assignment (§2.13) |
 | `CORRECT_TRAILER_IDENTITY` | The trailer has **no** `LOADING`/`UNLOADING` rows and no `ACTIVE` session; supervisor role | Renumbers the trailer record. Logged against both the old and new number |
 | `CORRECT_DEPARTURE` | A completed `CHECK_OUT` is found to name the wrong trailer (§5.1); supervisor role | Amends the departure: the trailer that actually left → `OFF_SITE` with its shipments `DEPARTED`; the trailer that did **not** leave is restored to its last known position with its shipments' prior states, including any `STAGED` preload. Original check-out is retained and superseded, never overwritten |
@@ -1438,7 +1467,7 @@ Manual overrides (`ADJUST_STATE`), cancellations, seal breaks, and placement var
 | 3 | **Detention per appointment** | Clock runs from `on_site_since` (check-in) to `CHECK_OUT`. Independent of sessions or stays. Dock utilization is measured per DockStay; labour productivity per DockSession. Three separate numbers, three separate denominators — do not mix them |
 | 4 | **One trailer, many shipments. One shipment, one trailer** | TrailerLoad junction (§2.3) with a uniqueness constraint on `shipment_id`. Trailer load state becomes derived (§3.1). Forces the fill-declaration question (§3.2.3) |
 | 5 | **No reassignment mid-load** | `UNASSIGN_SHIPMENT` permitted only while the row is `ASSIGNED`. No `LOADING → ASSIGNED` edge exists. Once loading starts, the only exits are completion or `CANCEL_SESSION` with explicit resolution |
-| 6 | **Empty is driver-claimed at the gate, with optional verification** | `CHECK_IN` sets `CLAIMED_EMPTY`. `VERIFY_EMPTY` is available but not required. `ASSIGN_SHIPMENT` accepts `CLAIMED_EMPTY`, so throughput is unblocked, but the trailer carries the `UNVERIFIED_ASSIGNMENT` flag until verified. *This is the trade you chose: faster assignment, with the risk made visible rather than eliminated. Track how often assignments on claimed-empty trailers fail — that number tells you whether to tighten the rule* |
+| 6 | **Empty is driver-claimed at the gate, with optional verification.** The claim is retired the moment freight goes aboard, and the people who can make it are whoever can see inside: the yard team on a return, the gate when no cleaning is needed, and the driver dropping it off | `CHECK_IN` sets `CLAIMED_EMPTY`. `VERIFY_EMPTY` is available but not required. `ASSIGN_SHIPMENT` accepts `CLAIMED_EMPTY`, so throughput is unblocked, but the trailer carries the `UNVERIFIED_ASSIGNMENT` flag until verified. *This is the trade you chose: faster assignment, with the risk made visible rather than eliminated. Track how often assignments on claimed-empty trailers fail — that number tells you whether to tighten the rule* |
 | 7 | **No dock constraints.** Docks are fungible | No feature matching in `CREATE_MOVE_TASK`. Dock assignment reduces to availability and proximity. Simplifies dock scheduling considerably |
 | 8 | **Spotter may choose placement and reports it** | `requested_destination` optional for yard spots, required for docks and gate. `actual_destination` mandatory to complete a move. `PLACEMENT_VARIANCE` flag when they differ. No "moved, location unknown" state exists |
 | 9 | **No-show for a staged preload — recommendation below** | See §9.1 |
@@ -1788,6 +1817,43 @@ The conversion is not one field. It is at least:
 **Recommendation: the explicit action.** The conversion changes the commercial meaning of the appointment, and an event log that says `CONVERTED_LIVE_TO_DROP` with a reason answers the dispute three weeks later, which two unrelated entries do not. It is also the only version that can require agreement from the facility rather than assuming it.
 
 Until this is decided, the honest state is what the bench now does: the two actions are hidden on a live visit, with reasons that say the conversion is what is missing rather than pretending the operation cannot happen.
+
+---
+
+### 10.17 Are `PULL_FROM_DOCK` and `CREATE_MOVE_TASK` one action or two?
+
+**Reported from the idle dock**, where the board showed both: one available, one disabled with "assign a dock or yard destination first". Two controls, two named actors, one job — *this trailer needs to move* — distinguished only by where the trailer happens to be standing.
+
+The behaviour is now right either way: at a dock only `PULL_FROM_DOCK` appears, and it asks for no destination. What is left is a naming decision, and it is not cosmetic, because the action name is what the event log records and what every screen and permission rule refers to.
+
+| | |
+|---|---|
+| **Keep two** | Each reads naturally where it applies, and the position precondition does the choosing. Costs: two names for one concept in the catalog, the glossary and the log; two rows to keep in step whenever the rules change; and a reader of §5 has to notice they are alternatives rather than a sequence — which nobody did, and it is why a flow called for both |
+| **Merge into `REQUEST_MOVE`** | One concept, one name, one row, one event type. The screen can still say "Get it off this dock" where the trailer is at a dock — a derived label, which §1.8 now requires anyway for `ADVANCE_READINESS`. Costs: a rename across four documents, and `PULL_FROM_DOCK` is the more evocative name at the point where it matters most |
+
+**Recommendation: merge, with a derived label.** The evidence that two names is the wrong shape is that a scenario in this set called for both in sequence and nobody caught it until the board drew them side by side. One action whose label depends on position is the same trick the readiness work now needs, and the event log is better for having one name for one thing.
+
+**Either way, the division of labour holds and is the more important half:** the person who reports the problem is not the person who chooses where the trailer goes.
+
+---
+
+### 10.16 Freight that came back
+
+**Reported from operations.** A driver dropping a trailer off should be able to say one of two things: it is empty, or a delivery came back on it — the consignee refused it, a stop was missed, more came back than the manifest named. The catalog has the first (`VERIFY_EMPTY`) and nothing at all for the second, so the only way to record returned freight is to unload a shipment the system never knew was aboard.
+
+**The question is what the row is**, and it is a modelling decision rather than an editorial one:
+
+| Shape | For | Against |
+|---|---|---|
+| **An `INBOUND` row** consigned to this facility | Costs nothing; every session, flag and departure check already works | Says the facility is the consignee of freight nobody sent it. A receipt that never happened, and it lands in inbound volume numbers |
+| **The original `OUTBOUND` row reopened**, shipment → `RETURNED` | Truthful: it is the same shipment, it just did not get delivered | An outbound row `ON_BOARD` makes the trailer read as a staged load ready to depart — the one thing it is not |
+| **A third row origin**, `RETURNED` | Says what happened, and the commercial questions attach to it cleanly | A third value in a dimension that two documents treat as binary; ripples into load state, session direction and the departure checks |
+
+**Recommendation: the third origin.** The first two are cheap because they lie, and both lies are the kind that surface a quarter later in a number nobody can reconcile — inbound receipts that were never received, or staged loads that were never loaded. The commercial questions about returned freight are also genuinely its own: whose it is, who pays for the trailer it is sitting in, whether it counts against the original delivery. A row that says `RETURNED` can answer them; one disguised as an inbound receipt cannot.
+
+**What it needs beyond the row.** A session direction to take it off — unloading a return is not receiving a delivery, and `END_SESSION`'s `UNLOADED` outcome sets the shipment to `RECEIVED`, which is wrong here. And a decision on whether the trailer is blocked from reassignment until it is off, which it currently is by §9 #16's no-inbound-rows rule — that rule happens to give the right answer for the wrong reason.
+
+Until this is decided the bench records the return as an inbound row and says so on the action, which is marked as the bench's own rather than the catalog's.
 
 ---
 

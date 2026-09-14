@@ -1,8 +1,16 @@
 # Operational Flows — States, Flags, and Actions by Step
 
 **Companion to:** `yard-dock-operations-model.md` v0.23, `action-availability-matrix.md` v0.15, `glossary.md` v0.9
-**Status:** Draft v0.11 — pulling off the dock is its own step
+**Status:** Draft v0.12 — the load is built before the driver arrives
 **Purpose:** Walk each appointment type from start to finish, showing at every step which states change, which flags can appear, which actions are available, and who acts.
+
+### Changes from v0.11
+Reported: a pickup does not start when the driver arrives, and an inbound drop leaves the dock occupied.
+- **§2.1 added — the pre-appointment run.** The trailer is chosen, the shipment assigned, and the load built (dock, spotter, crew, fill, seal) before anybody registers at the gate. §6, §7 and §8 had this as a single P0 row saying "already loaded, waiting in the yard", which described the *state* the driver finds and not the operation that produced it — eleven steps, four people, and the part of the day that is actually being planned.
+- **§5 gains an optional P4′** — the empty trailer pulled back to the yard so the dock is freed. Leaving it there is also valid; only that was written down.
+- **§9 R3/R4 named apart.** Both read `ADVANCE_READINESS`, and one begins the work while the other records its outcome.
+- **§9 R5 is a fork:** empty, or freight came back on it (model §10.16).
+- **§10 table:** patterns 4, 5 and 8 use P2, P3 and P4 after all — for the trailer, before the driver.
 
 ### Changes from v0.10
 Reported from the history of an inbound live load: the dock stay was drawn lasting longer than the visit containing it.
@@ -86,6 +94,27 @@ Every flow is a subset of these, in this order.
 
 ---
 
+## 2.1 The pre-appointment run — patterns 4, 5 and 8
+
+**Three of the eight patterns do not begin when the driver arrives.** A pickup, a drop-and-hook's take trailer, and a company preload all leave with a load that was built hours earlier, and building it is the operation this document was skipping in a single row reading "already loaded, waiting in the yard". That row described the state the driver finds. What follows is the work that produced it.
+
+Nothing here involves the driver. It is the same spine, run by the facility on its own account, with the trailer as the subject:
+
+| Step | Changes | Actions | Actor |
+|---|---|---|---|
+| **P0** A planner picks an empty trailer standing in the yard and puts the shipment on it | Row created `ASSIGNED`; shipment → `ASSIGNED`; **destination → `AWAITING_ASSIGNMENT`** — it has a load to put in, so it needs a dock | `ASSIGN_SHIPMENT` | Planner |
+| **P2** A dock, held for the **trailer** | destination → `DOCK_ASSIGNED` | `ASSIGN_DOCK` | Dispatcher |
+| **P3** **No tractor is attached**, so getting it there is a task | MoveTask `PENDING` → `COMPLETED`; position → `DOCK`; DockStay opens; yard-truck custody | `CREATE_MOVE_TASK`, `ASSIGN_MOVE_TASK`, `START_MOVE`, `COMPLETE_MOVE` | Dispatcher / spotter |
+| **P4** Loaded | Rows → `ON_BOARD`; **empty verification retired** (model §3.6.6) | `OPEN_SESSION`, `START_SESSION`, `END_SESSION` | Dock crew |
+| **P4d** Fill declared, then sealed | `fill_declaration → COMPLETE`; shipments → `STAGED` | `DECLARE_FILL_COMPLETE`, `SEAL_TRAILER` | Dock lead |
+| **P3′** *Optional* — back to the yard so the dock is free, or left at the dock until he comes for it | DockStay closes; dock → `FREE` | `PULL_FROM_DOCK`, then the move | Dock lead / spotter |
+
+**The phases are per object, not per appointment.** This is the part that does not fit §2's reading of the spine: the trailer completes P2, P3 and P4 before the driver's P1 begins. §1.1 already said a flow is a subset of the spine with repeats and parallel branches; this adds that the *order* is per subject. Model §10.14 makes the same point about the driver and the trailer diverging after a drop — here they have not converged yet.
+
+**The driver may arrive early.** Registering while the load is still being built is normal — he waits. What cannot happen is being admitted to collect a load that does not exist, and `AUTHORIZE_DEPARTURE`'s freight match is what enforces that at the end rather than the gate refusing him at the start.
+
+---
+
 ## 3. Flow 1 — Inbound live load
 
 Trailer arrives loaded, unloads at a dock with the driver waiting, departs empty. *(§4 pattern 1)*
@@ -150,8 +179,11 @@ Trailer arrives loaded, is dropped, driver leaves. Unloading happens later, on y
 | **P2′** A dock frees up; assigned to the **trailer**, not a visit | destination → `DOCK_ASSIGNED` | `AWAITING_DOCK` | `ASSIGN_DOCK` | Dispatcher |
 | **P3′** **Now** a move task exists | MoveTask `PENDING` → `COMPLETED`; position → `DOCK` | `NEEDS_MOVE`, `PLACEMENT_VARIANCE` | `CREATE_MOVE_TASK` (auto or manual), `ASSIGN_MOVE_TASK`, `START_MOVE`, `COMPLETE_MOVE` | Yard team |
 | **P4** Unload as Flow 1 | Rows closed; load state `EMPTY` | — | Session actions | Dock crew |
+| **P4′** *Optional* — pull the empty trailer back to the yard | DockStay closes; dock → `FREE`; trailer available | `PULL_FROM_DOCK`, then the move | Dock lead / spotter |
 
 **This flow is why destination is a trailer dimension, not a visit one.** Between P5 and P2′ the appointment is closed and the driver is gone, but the trailer still shows "Awaiting Dock" and still needs a dock. Nothing about that is the visit's business.
+
+**P4′ is optional and it matters.** When the unload ends the trailer is empty and the dock is the scarce thing, so it is normally pulled back to the yard and the dock freed for the next load. Leaving it there for its own next load is also valid — but only that was written down, so "the dock is never freed" was the only path this document described.
 
 **The quiet risk is the gap.** No driver is waiting, no detention is running, nobody is complaining — so a dropped trailer with no dock is the item most likely to be ignored while louder things get attention. That is the entire reason `DROPPED_NO_DESTINATION` exists.
 
@@ -165,7 +197,7 @@ Driver arrives bobtail, hooks a trailer that **another appointment loaded**, lea
 
 | Step | Changes | Flags | Actions | Actor |
 |---|---|---|---|---|
-| **P0** Trailer already loaded, fill complete, sealed, waiting in the yard | Shipments `STAGED`; destination `NONE` | `PRELOAD_STAGED`, `STAGED_AGING` | — | — |
+| **Before the appointment** | **The whole of §2.1** — chosen, assigned, docked, loaded, filled, sealed, optionally returned to the yard. Shipments end `STAGED` | `PRELOAD_STAGED`, `STAGED_AGING` | eleven actions, four people | Planner / dispatcher / spotter / dock |
 | **P1** Driver registers and is admitted. **No BRING leg** | presence → `ON_SITE` | — | `SELF_REGISTER`, `ADMIT` | Driver / gate |
 | **P2** *Not applicable* — the trailer already has a position | — | — | — | — |
 | **P3** Driver hooks the staged trailer | Any pending MoveTask **cancelled** | `TRACTOR_ATTACHED` | `HOOK_TRAILER` | Driver |
@@ -226,7 +258,7 @@ Driver brings an **empty** trailer, drops it, and **leaves the facility**. The t
 
 Driver brings one trailer and takes a **different** one, in one visit. *(§4 patterns 5 and 6)*
 
-This is Flow 3's P1–P3b and Flow 4's P3–P5b, in one appointment with two legs naming two trailers.
+This is Flow 3's P1–P3b and Flow 4's P3–P5b, in one appointment with two legs naming two trailers — **and §2.1 first**, for the trailer he leaves with. It was loaded before he arrived, exactly as on a pickup.
 
 | Step | Changes | Actions |
 |---|---|---|
@@ -247,7 +279,7 @@ Employee takes a company trailer out on a route. *(§4 pattern 8 — optional)*
 
 | Step | Changes | Flags | Actions | Actor |
 |---|---|---|---|---|
-| **P0** Trailer cleaned, inspected, in the pool, then loaded and staged | readiness `READY` → assigned → `STAGED` | `AVAILABLE_FOR_ASSIGNMENT` then `PRELOAD_STAGED` | `ASSIGN_SHIPMENT`, session actions | Planner / dock |
+| **Before the appointment** | Cleaned and inspected into the pool (§9), then **the whole of §2.1** — assigned, docked, loaded, filled, sealed | `AVAILABLE_FOR_ASSIGNMENT` then `PRELOAD_STAGED` | readiness actions, then §2.1's eleven | Wash / planner / spotter / dock |
 | **P1** Employee arrives, `party_type = COMPANY_DRIVER`, `access_method = RF_BADGE`. **No dockpass** | presence → `ON_SITE` | — | `ADMIT`, on the badge as credential (§5.1) | Driver |
 | **P3** Hooks the trailer from the yard or a dock | Pending move cancelled | `TRACTOR_ATTACHED` | `HOOK_TRAILER` | Driver |
 | **P5** Departs on RF badge. **Relaxed ceremony** | Shipments → `DEPARTED` | — | `AUTHORIZE_DEPARTURE` (reduced checks), `CHECK_OUT` | Driver |
@@ -268,8 +300,16 @@ The return leg of the fleet loop. *(§4 pattern 9 — optional)*
 | **Return** Driver parks in the outside lot and goes home | Position = lot (`inside_fence = false`); readiness → `NOT_READY` | `OUTSIDE_PERIMETER`, `NOT_READY` | — | Driver |
 | **Discovery** Found by yard check, or reported from the driver's phone | `UnappointedReturn` created, `AWAITING_INTAKE` | `FREIGHT_OUTSIDE_PERIMETER` if loaded — **a policy violation** | `INTAKE_TRAILER` | Yard team |
 | **Intake** Brought into the system | `intake_state → TAKEN_IN` | — | `INTAKE_TRAILER` | Yard team |
-| **Prep** Cleaned and inspected | readiness `IN_PREP` → `READY`, **or** → `OUT_OF_SERVICE` on damage | — | `MARK_OUT_OF_SERVICE` | Wash / maintenance |
-| **P0′** Enters the pool | `AVAILABLE_FOR_ASSIGNMENT` | — | `ASSIGN_SHIPMENT` now permitted | Planner |
+| **Prep a** *Begin* the readiness work | readiness `NOT_READY` → `IN_PREP` | — | `ADVANCE_READINESS` | Wash bay |
+| **Prep b** *Record its outcome* | `IN_PREP` → `READY`, **or** `service_state → OUT_OF_SERVICE` on damage | — | `ADVANCE_READINESS`, `MARK_OUT_OF_SERVICE` | Inspector |
+| **Contents** Empty, **or freight came back on it** | `empty_verification → VERIFIED_EMPTY`; or a returned row aboard and the trailer not assignable | — | `VERIFY_EMPTY`, or nothing yet — see model §10.16 | Yard team, gate, **or the driver who dropped it** |
+| **P0′** Enters the pool — *the empty branch only* | `AVAILABLE_FOR_ASSIGNMENT` | — | `ASSIGN_SHIPMENT` now permitted | Planner |
+
+**Prep is two steps and they are not the same job.** Starting the wash and inspection and recording what they found are done by different people at different times, and both are `ADVANCE_READINESS` — so a screen that names an action by the action reads the same step offered twice. Name them by the transition: *begin the readiness work*, then *record the readiness outcome* (model §5.5).
+
+**Who can say the trailer is empty.** The yard team open it to clean it, so on a return they are the people who can see — not the gate, which was the only owner this document gave `VERIFY_EMPTY`. The gate is right where no cleaning is required, and **the driver who dropped it off** can say so himself. Three owners, which is what matrix §1.8's owner set is for.
+
+**And he may need to say the opposite.** A delivery comes back — refused, a stop missed, an overage — and the driver is the only person who knows. There is no action for it: the catalog can record empty and cannot record freight that came back. Model §10.16 is the open item, and until it is settled the trailer is only describable by unloading a shipment nobody knew was aboard.
 
 **The trailer is not assignable at any point before Prep completes.** It is technically an empty outbound-capable trailer; it is operationally unavailable because it is dirty. Recording it as a preload on arrival would assert two false things.
 
@@ -283,11 +323,11 @@ The return leg of the fleet loop. *(§4 pattern 9 — optional)*
 |---|---|---|---|---|---|---|---|---|
 | 1 · Inbound live | 1 | ✔ | ✔ | ✔ | driver | unload | ✔ | ✔ |
 | 2 · Outbound live | 1 | ✔ | ✔ | ✔ | driver | load | ✔ | ✔ |
-| 3 · Inbound drop | 1 | ✔ | ✔ | **twice** | driver, then **yard team** | unload | ✔ early | ✔ |
-| 4 · Outbound pickup | 1 | ✔ | ✔ | — | driver hooks | — | ✔ | ✔ |
+| 3 · Inbound drop | 1 | ✔ | ✔ | **twice** | driver, then **yard team** twice | unload | ✔ early | ✔ |
+| 4 · Outbound pickup | 1 | ✔ | ✔ | **trailer, first** | **trailer, then driver hooks** | **trailer, first** | ✔ | ✔ |
 | 4a · Outbound preload | **2** | ✔ | **twice** | **twice** | driver, **yard team**, driver | load | **twice** | ✔ |
-| 5 · Drop & hook | 1 | ✔ | ✔ | ✔ for T1 | both | later, on T1 | ✔ on T2 | ✔ |
-| 6 · Company pickup | 1 | ✔ | RF | — | driver hooks | — | relaxed | ✔ |
+| 5 · Drop & hook | 1 | ✔ | ✔ | **T2 first**, then T1 | T2, then both | **T2 first**; later on T1 | ✔ on T2 | ✔ |
+| 6 · Company pickup | 1 | ✔ | RF | **trailer, first** | **trailer, then driver hooks** | **trailer, first** | relaxed | ✔ |
 | 7 · Company return | — | next cycle | **none** | later | — | — | — | starts here |
 
 Two things this table makes obvious that prose does not:
@@ -295,6 +335,7 @@ Two things this table makes obvious that prose does not:
 - **Flow 3 runs P2 twice** — once for the driver's drop point, again when a dock frees up. It is the only flow where the same phase recurs after the visit closes.
 - **Flow 7 has no P1 at all**, which is why every arrival path in the model had to be revisited to accommodate it.
 - **Flow 4a repeats P1 and P5**, which nothing else does. A flow is a subset of the spine *with repeats*, not a prefix of it — and the Visits column is now the first thing to read, because it is what separates 4a from flow 2 and from flow 4.
+- **Three patterns run P2, P3 and P4 before P1** — for the trailer, not the driver (§2.1). The dashes those cells used to hold were this document's biggest omission: they said "not applicable" about eleven steps and four people.
 - **P3 reads "driver" for the live flows and names the yard team for the drops, and that distinction is load-bearing.** The handoff step P3b belongs to §5, §6a and §7 and appears in neither live flow: on a live load the driver keeps the trailer from arrival to departure. This document has said so from the start by omission, and nothing else did — model §5.2's `DROP_TRAILER` precondition named only a position and a tractor, so the handoff was offered to a live load's driver while the dock crew was unloading his trailer (model §10.15).
 
 ---
